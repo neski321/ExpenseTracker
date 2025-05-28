@@ -1,5 +1,5 @@
 
-"use client"; // This layout needs to be a client component to use hooks
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { IncomeSourceForm } from "@/components/income-sources/income-source-form";
@@ -125,7 +125,7 @@ export default function IncomeSourcesPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingIncomeSource ? "Edit Source" : "Add New Source"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{editingIncomeSource ? "Edit Income Source" : "Add New Income Source"}</DialogTitle>
                     <DialogDescription>

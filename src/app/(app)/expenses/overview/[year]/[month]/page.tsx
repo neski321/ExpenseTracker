@@ -226,7 +226,7 @@ export default function MonthlyExpensesOverviewPage() {
         setIsFormOpen(isOpen);
         if (!isOpen) setEditingExpense(undefined);
       }}>
-        <DialogContent className="sm:max-w-[525px]">
+        <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Expense</DialogTitle>
             <DialogDescription>

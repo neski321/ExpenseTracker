@@ -1,5 +1,5 @@
 
-"use client"; // This layout needs to be a client component to use hooks
+"use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { IncomeForm } from "@/components/income/income-form";
@@ -27,8 +27,8 @@ import {
   deleteIncomeDoc,
 } from "@/lib/services/income-service";
 import { parseCSV, parseExcel, processImportedIncomes } from "@/lib/import-utils";
-// import * as XLSX from 'xlsx'; // well export is implemented
-// import { format } from 'date-fns'; // Well export is implemented
+// import * as XLSX from 'xlsx'; // Keep if export is implemented later
+// import { format } from 'date-fns'; // Keep if export is implemented later
 
 export default function IncomePage() {
   const { user } = useAuth();
@@ -158,6 +158,9 @@ export default function IncomePage() {
           getIncomeSourcesCol(user.uid),
           getCurrenciesCol(user.uid)
       ]);
+      setIncomeSourcesState(userIncomeSources); // Update local state for form if needed
+      setCurrenciesState(userCurrencies);
+
 
       const { newIncomes: importedIncomes, errors: processingErrors, infoMessages: processingInfoMessages, skippedRows } = processImportedIncomes(
           rawData,
@@ -247,7 +250,7 @@ export default function IncomePage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingIncome ? "Edit Income" : "Add New Income"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[525px]">
+            <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingIncome ? "Edit Income" : "Add New Income"}</DialogTitle>
                 <DialogDescription>
