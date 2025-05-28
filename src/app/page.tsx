@@ -26,7 +26,7 @@ export default function LandingPage() {
      return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background">
         <Coins className="w-20 h-20 text-primary animate-spin mb-6" />
-        <p className="text-lg text-muted-foreground">Loading PennyPincher...</p>
+        <p className="text-lg text-muted-foreground">Loading PennyPincher by Neski...</p>
       </div>
     );
   }
@@ -35,7 +35,7 @@ export default function LandingPage() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary/30 p-8 text-center">
       <Coins className="w-24 h-24 text-primary mb-6" />
       <h1 className="text-5xl font-bold text-primary mb-4">
-        PennyPincher
+        PennyPincher by Neski
       </h1>
       <p className="text-xl text-foreground/80 mb-8 max-w-md">
         Take control of your finances with ease. Track spending, set budgets, and achieve your financial goals.
@@ -52,7 +52,7 @@ export default function LandingPage() {
         </div>
       )}
       <footer className="absolute bottom-8 text-sm text-muted-foreground">
-        © {new Date().getFullYear()} PennyPincher. All rights reserved.
+        © {new Date().getFullYear()} PennyPincher by Neski. All rights reserved.
       </footer>
     </div>
   );

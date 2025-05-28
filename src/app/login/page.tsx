@@ -38,7 +38,7 @@ export default function LoginPage() {
             <Coins className="w-16 h-16 text-primary mx-auto" />
           </Link>
           <CardTitle className="text-3xl font-bold text-primary">Welcome Back!</CardTitle>
-          <CardDescription>Sign in to manage your finances with PennyPincher.</CardDescription>
+          <CardDescription>Sign in to manage your finances with PennyPincher by Neski.</CardDescription>
         </CardHeader>
         <CardContent>
           <LoginForm />
@@ -51,7 +51,7 @@ export default function LoginPage() {
         </CardContent>
       </Card>
        <footer className="absolute bottom-8 text-sm text-muted-foreground">
-        © {new Date().getFullYear()} PennyPincher. All rights reserved.
+        © {new Date().getFullYear()} PennyPincher by Neski. All rights reserved.
       </footer>
     </div>
   );

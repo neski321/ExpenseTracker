@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'PennyPincher',
+  title: 'PennyPincher by Neski',
   description: 'Track your expenses and manage your budget effectively.',
 };
 

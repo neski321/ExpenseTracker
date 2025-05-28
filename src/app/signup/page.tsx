@@ -38,7 +38,7 @@ export default function SignupPage() {
           <CardTitle className="text-3xl font-bold text-primary flex items-center justify-center">
             <UserPlus className="mr-3 h-8 w-8" /> Create Your Account
             </CardTitle>
-          <CardDescription>Join PennyPincher and start managing your finances today.</CardDescription>
+          <CardDescription>Join PennyPincher by Neski and start managing your finances today.</CardDescription>
         </CardHeader>
         <CardContent>
           <SignupForm />
@@ -51,7 +51,7 @@ export default function SignupPage() {
         </CardContent>
       </Card>
        <footer className="absolute bottom-8 text-sm text-muted-foreground">
-        © {new Date().getFullYear()} PennyPincher. All rights reserved.
+        © {new Date().getFullYear()} PennyPincher by Neski. All rights reserved.
       </footer>
     </div>
   );
