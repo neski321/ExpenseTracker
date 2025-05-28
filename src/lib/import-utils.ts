@@ -4,7 +4,8 @@ import * as XLSX from 'xlsx';
 import type { Expense, Category, PaymentMethod, Currency, Income, IncomeSource } from '@/lib/types';
 import { isValid, parseISO } from 'date-fns';
 import { BASE_CURRENCY_ID } from './currency-utils';
-import { initialCategoriesData } from './mock-data'; // Import for direct modification
+import { addCategoryDoc } from './services/category-service'; // For creating categories if needed
+import { getCategoriesCol } from './services/category-service'; // To fetch user categories
 
 // --- Generic File Parsers ---
 
@@ -61,12 +62,12 @@ function parseImportedDate(value: any): Date | undefined {
   if (value instanceof Date && isValid(value)) {
     date = value;
   } else {
-    const dateString = value.toString().replace(/\./g, '-');
-    date = parseISO(dateString);
-    if (!isValid(date)) {
-      date = new Date(dateString);
+    const dateString = value.toString().replace(/\./g, '-'); // Handle YYYY.MM.DD
+    date = parseISO(dateString); // Handles YYYY-MM-DD and other ISO formats
+    if (!isValid(date)) { // Fallback for other common formats like MM/DD/YYYY
+      date = new Date(dateString); 
     }
-    if (!isValid(date)) {
+    if (!isValid(date)) { // Final fallback if previous parsing failed
         date = new Date(value.toString());
     }
   }
@@ -77,7 +78,7 @@ function parseBoolean(value: any): boolean | undefined {
     const strValue = normalizeString(value?.toString());
     if (strValue === 'true' || strValue === 'yes' || strValue === '1') return true;
     if (strValue === 'false' || strValue === 'no' || strValue === '0') return false;
-    return undefined;
+    return undefined; // Return undefined if not clearly boolean, to let schema defaults apply
 }
 
 
@@ -104,15 +105,17 @@ function getExpenseColumnIndexMap(headers: string[]): Record<string, number> {
 
 export function processImportedExpenses(
   rawData: any[][],
-  existingCategories: Category[], // This is initialCategoriesData, passed for modification
-  currencies: Currency[],
-  paymentMethods: PaymentMethod[]
-): { newExpenses: Expense[]; errors: string[]; infoMessages: string[]; skippedRows: number, createdCategoryCount: number } {
-  const newExpenses: Expense[] = [];
+  userCategories: Category[], // Now expects Firestore-backed categories
+  userCurrencies: Currency[],   // Expects Firestore-backed currencies
+  userPaymentMethods: PaymentMethod[] // Expects Firestore-backed payment methods
+): { newExpenses: Omit<Expense, "id">[]; errors: string[]; infoMessages: string[]; skippedRows: number, createdCategoryCount: number } {
+  const newExpenses: Omit<Expense, "id">[] = [];
   const errors: string[] = [];
   const infoMessages: string[] = [];
   let skippedRows = 0;
-  let createdCategoryCount = 0;
+  // This count is now just informational, actual creation would be handled by a dedicated service call
+  // if we were to implement on-the-fly category creation via import. For now, we match existing.
+  const createdCategoryCount = 0; 
 
   if (rawData.length === 0) {
     errors.push("Imported file is empty.");
@@ -152,7 +155,7 @@ export function processImportedExpenses(
     const nextDueDateValue = colMap['nextduedate'] !== undefined ? row[colMap['nextduedate']] : undefined;
 
     if (!dateValue || !amountValue || !csvSubCategoryNameInput) {
-      errors.push(`Row ${rowIndex}: Missing required data (Date, Amount, or Category column).`);
+      infoMessages.push(`Row ${rowIndex}: Missing required data (Date, Amount, or Category column). Row skipped.`);
       skippedRows++;
       return;
     }
@@ -162,12 +165,12 @@ export function processImportedExpenses(
 
 
     if (!date) {
-      errors.push(`Row ${rowIndex}: Invalid date format for '${dateValue}'.`);
+      infoMessages.push(`Row ${rowIndex}: Invalid date format for '${dateValue}'. Row skipped.`);
       skippedRows++;
       return;
     }
-    if (isNaN(amount) || amount < 0) {
-       errors.push(`Row ${rowIndex}: Invalid amount '${amountValue}'. Must be a non-negative number.`);
+    if (isNaN(amount) || amount < 0) { 
+       infoMessages.push(`Row ${rowIndex}: Invalid amount '${amountValue}'. Must be a non-negative number. Row skipped.`);
        skippedRows++;
        return;
     }
@@ -184,34 +187,28 @@ export function processImportedExpenses(
     let finalCategoryNameForDescription = csvSubCategoryName;
 
     if (csvMainCategoryName) {
-        let mainCategory = initialCategoriesData.find(c => normalizeString(c.name) === normalizeString(csvMainCategoryName) && !c.parentId);
+        const mainCategory = userCategories.find(c => normalizeString(c.name) === normalizeString(csvMainCategoryName) && !c.parentId);
         if (!mainCategory) {
-            const newMainCategoryId = `cat-imported-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-            mainCategory = { id: newMainCategoryId, name: csvMainCategoryName };
-            initialCategoriesData.push(mainCategory);
-            createdCategoryCount++;
-            infoMessages.push(`Row ${rowIndex}: Created new main category '${csvMainCategoryName}'.`);
+            infoMessages.push(`Row ${rowIndex}: Main category '${csvMainCategoryName}' not found. Row skipped. Please add it first or check spelling.`);
+            skippedRows++;
+            return;
         }
 
-        let subCategory = initialCategoriesData.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && c.parentId === mainCategory!.id);
+        const subCategory = userCategories.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && c.parentId === mainCategory.id);
         if (!subCategory) {
-            const newSubCategoryId = `cat-imported-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-            subCategory = { id: newSubCategoryId, name: csvSubCategoryName, parentId: mainCategory!.id };
-            initialCategoriesData.push(subCategory);
-            createdCategoryCount++;
-            infoMessages.push(`Row ${rowIndex}: Created new sub-category '${csvSubCategoryName}' under '${mainCategory!.name}'.`);
+            infoMessages.push(`Row ${rowIndex}: Sub-category '${csvSubCategoryName}' under main category '${mainCategory.name}' not found. Row skipped. Please add it first or check spelling.`);
+            skippedRows++;
+            return;
         }
         targetCategoryId = subCategory.id;
         finalCategoryNameForDescription = subCategory.name;
 
-    } else if (csvSubCategoryName) {
-        let mainCategory = initialCategoriesData.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && !c.parentId);
+    } else if (csvSubCategoryName) { 
+        const mainCategory = userCategories.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && !c.parentId);
         if (!mainCategory) {
-            const newMainCategoryId = `cat-imported-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-            mainCategory = { id: newMainCategoryId, name: csvSubCategoryName };
-            initialCategoriesData.push(mainCategory);
-            createdCategoryCount++;
-            infoMessages.push(`Row ${rowIndex}: Created new main category '${csvSubCategoryName}' from 'Category' column.`);
+            infoMessages.push(`Row ${rowIndex}: Main category '${csvSubCategoryName}' (from 'Category' column) not found. Row skipped. Please add it first or check spelling.`);
+            skippedRows++;
+            return;
         }
         targetCategoryId = mainCategory.id;
         finalCategoryNameForDescription = mainCategory.name;
@@ -219,14 +216,14 @@ export function processImportedExpenses(
 
 
     if (!targetCategoryId) {
-        errors.push(`Row ${rowIndex}: Could not determine or create a valid category for '${csvMainCategoryName || csvSubCategoryName}'.`);
+        infoMessages.push(`Row ${rowIndex}: Could not determine a valid category for '${csvMainCategoryName || csvSubCategoryName}'. Ensure categories exist. Row skipped.`);
         skippedRows++;
         return;
     }
 
     let currencyIdToUse = BASE_CURRENCY_ID;
     if (currencyCodeValue && normalizeString(currencyCodeValue) !== "") {
-        const currency = currencies.find(c => normalizeString(c.code) === currencyCodeValue);
+        const currency = userCurrencies.find(c => normalizeString(c.code) === currencyCodeValue);
         if (!currency) {
           infoMessages.push(`Row ${rowIndex}: Currency code '${currencyCodeValue}' not found. Defaulting to base currency. Please add this currency in settings if needed.`);
         } else {
@@ -236,30 +233,32 @@ export function processImportedExpenses(
 
     let paymentMethodId: string | undefined = undefined;
     if (paymentMethodNameValue && normalizeString(paymentMethodNameValue) !== "") {
-      const paymentMethod = paymentMethods.find(pm => normalizeString(pm.name) === paymentMethodNameValue);
+      const paymentMethod = userPaymentMethods.find(pm => normalizeString(pm.name) === paymentMethodNameValue);
       if (!paymentMethod) {
-        infoMessages.push(`Row ${rowIndex}: Payment method '${paymentMethodNameValue}' (from 'Account') not found. It will be left blank.`);
+        infoMessages.push(`Row ${rowIndex}: Payment method '${paymentMethodNameValue}' (from 'Account') not found. It will be left blank. Please add it first if needed.`);
       } else {
         paymentMethodId = paymentMethod.id;
       }
     }
 
     let descriptionForExpense = noteValue;
-    if (!descriptionForExpense) {
+    if (!descriptionForExpense && finalCategoryNameForDescription) {
         descriptionForExpense = finalCategoryNameForDescription;
+    } else if (!descriptionForExpense) {
+        descriptionForExpense = "Imported Expense";
     }
+
 
     const isSubscription = parseBoolean(isSubscriptionValue);
     let nextDueDate: Date | undefined = undefined;
     if (isSubscription) {
         nextDueDate = parseImportedDate(nextDueDateValue);
-        if (!nextDueDate && isSubscriptionValue) {
-            errors.push(`Row ${rowIndex}: 'Next Due Date' is missing or invalid for subscription. Subscription flag ignored.`);
+        if (!nextDueDate && (isSubscriptionValue !== undefined && isSubscriptionValue !== "")) { 
+            infoMessages.push(`Row ${rowIndex}: 'Next Due Date' is missing or invalid for subscription marked as true. Subscription flag ignored.`);
         }
     }
 
     newExpenses.push({
-      id: `imported-exp-${Date.now()}-${index}`,
       date,
       description: descriptionForExpense,
       amount,
@@ -295,10 +294,10 @@ function getIncomeColumnIndexMap(headers: string[]): Record<string, number> {
 
 export function processImportedIncomes(
   rawData: any[][],
-  incomeSources: IncomeSource[],
-  currencies: Currency[]
-): { newIncomes: Income[]; errors: string[]; infoMessages: string[]; skippedRows: number } {
-  const newIncomes: Income[] = [];
+  userIncomeSources: IncomeSource[], // Expects Firestore-backed income sources
+  userCurrencies: Currency[]     // Expects Firestore-backed currencies
+): { newIncomes: Omit<Income, "id">[]; errors: string[]; infoMessages: string[]; skippedRows: number } {
+  const newIncomes: Omit<Income, "id">[] = [];
   const errors: string[] = [];
   const infoMessages: string[] = [];
   let skippedRows = 0;
@@ -334,7 +333,7 @@ export function processImportedIncomes(
 
 
     if (!dateValue || !descriptionValue || !amountValue || !incomeSourceNameValue) {
-      errors.push(`Row ${rowIndex}: Missing required data for income (Date, Description, Amount, or IncomeSourceName).`);
+      infoMessages.push(`Row ${rowIndex}: Missing required data for income (Date, Description, Amount, or IncomeSourceName). Row skipped.`);
       skippedRows++;
       return;
     }
@@ -343,26 +342,26 @@ export function processImportedIncomes(
     const amount = parseFloat(amountValue?.toString().replace(/[^0-9.-]+/g, "") || "0");
 
     if (!date) {
-      errors.push(`Row ${rowIndex}: Invalid date format for income '${dateValue}'.`);
+      infoMessages.push(`Row ${rowIndex}: Invalid date format for income '${dateValue}'. Row skipped.`);
       skippedRows++;
       return;
     }
     if (isNaN(amount) || amount <= 0) {
-      errors.push(`Row ${rowIndex}: Invalid amount for income '${amountValue}'. Must be a positive number.`);
+      infoMessages.push(`Row ${rowIndex}: Invalid amount for income '${amountValue}'. Must be a positive number. Row skipped.`);
       skippedRows++;
       return;
     }
 
-    const incomeSource = incomeSources.find(s => normalizeString(s.name) === incomeSourceNameValue);
+    const incomeSource = userIncomeSources.find(s => normalizeString(s.name) === incomeSourceNameValue);
     if (!incomeSource) {
-      errors.push(`Row ${rowIndex}: Income source '${incomeSourceNameValue}' not found. Please add it first or ensure the name matches exactly.`);
+      infoMessages.push(`Row ${rowIndex}: Income source '${row[colMap['incomesourcename']]}' not found. Row Skipped. Please add it first or ensure the name matches exactly.`);
       skippedRows++;
       return;
     }
 
     let currencyIdToUse = BASE_CURRENCY_ID;
     if (currencyCodeValue && normalizeString(currencyCodeValue) !== "") {
-        const currency = currencies.find(c => normalizeString(c.code) === currencyCodeValue);
+        const currency = userCurrencies.find(c => normalizeString(c.code) === currencyCodeValue);
         if (!currency) {
           infoMessages.push(`Row ${rowIndex}: Currency code '${currencyCodeValue}' for income not found. Defaulting to base currency.`);
         } else {
@@ -372,7 +371,6 @@ export function processImportedIncomes(
 
 
     newIncomes.push({
-      id: `imported-inc-${Date.now()}-${index}`,
       date,
       description: descriptionValue.toString(),
       amount,

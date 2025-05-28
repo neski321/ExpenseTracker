@@ -1,7 +1,7 @@
 
 "use client";
 
-import { z } from "zod"; 
+import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
@@ -20,17 +20,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const NO_PARENT_VALUE = "__none__";
 
+// Form values will not include iconName directly, as it's not user-editable in this form version.
+// iconName will be handled during submission if needed (e.g., preserving existing iconName)
 const categoryFormSchema = z.object({
   name: z.string().min(2, "Category name must be at least 2 characters.").max(50),
   parentId: z.string().optional(),
 });
 
-type CategoryFormValues = Omit<Category, "id" | "icon">; // parentId is now included
+type CategoryFormValues = z.infer<typeof categoryFormSchema>; // This is Omit<Category, "id" | "iconName"> effectively
 
 interface CategoryFormProps {
-  onSubmit: (data: CategoryFormValues) => void;
+  onSubmit: (data: Omit<Category, "id" | "iconName">) => void; // Pass data without iconName
   existingCategory?: Category;
-  allCategories: Category[]; // To populate parent select
+  allCategories: Category[];
 }
 
 export function CategoryForm({ onSubmit, existingCategory, allCategories }: CategoryFormProps) {
@@ -46,23 +48,18 @@ export function CategoryForm({ onSubmit, existingCategory, allCategories }: Cate
     },
   });
 
-  // Filter out the current category and its descendants from being a potential parent
   const potentialParents = allCategories.filter(cat => {
     if (existingCategory && cat.id === existingCategory.id) return false;
-    // Basic circular dependency prevention: cannot be a child of itself.
-    // A more robust solution would check for deeper circular dependencies if nesting > 1 level is common.
-    // For now, this prevents direct self-parenting and a category becoming a child of its own child.
-    // This part is complex to do perfectly without a full tree traversal; keeping it simple for now.
-    if (existingCategory && existingCategory.parentId === cat.id) return true; // allow current parent
-    // A more robust check for descendants would be needed for deeper nesting.
-    return true; 
+    return true;
   });
-
 
   function handleSubmit(data: CategoryFormValues) {
     const submitData = {
-      ...data,
+      name: data.name,
       parentId: data.parentId === NO_PARENT_VALUE ? undefined : data.parentId,
+      // iconName is not part of the form values here.
+      // If editing, existingCategory.iconName would be preserved in the parent component.
+      // If adding, iconName would be undefined by default.
     };
     onSubmit(submitData);
     toast({
@@ -96,8 +93,8 @@ export function CategoryForm({ onSubmit, existingCategory, allCategories }: Cate
           render={({ field }) => (
             <FormItem>
               <FormLabel>Parent Category (Optional)</FormLabel>
-              <Select 
-                onValueChange={field.onChange} 
+              <Select
+                onValueChange={field.onChange}
                 defaultValue={field.value || NO_PARENT_VALUE}
                 value={field.value || NO_PARENT_VALUE}
               >

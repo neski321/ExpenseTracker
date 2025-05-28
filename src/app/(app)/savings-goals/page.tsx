@@ -1,7 +1,7 @@
 
-"use client";
+"use client"; // This layout needs to be a client component to use hooks
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { SavingGoalForm } from "@/components/savings/saving-goal-form";
 import { SavingGoalList } from "@/components/savings/saving-goal-list";
 import type { SavingGoal, Currency } from "@/lib/types";
@@ -17,72 +17,83 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { 
-    initialSavingGoalsData,
-    initialCurrenciesData,
-} from "@/lib/mock-data";
+import { useAuth } from "@/contexts/auth-context";
 import { getCurrencySymbol, BASE_CURRENCY_ID } from "@/lib/currency-utils";
+import { getCurrenciesCol } from "@/lib/services/currency-service";
+import {
+  addSavingGoalDoc,
+  getSavingGoalsCol,
+  updateSavingGoalDoc,
+  deleteSavingGoalDoc,
+} from "@/lib/services/saving-goal-service";
 
 export default function SavingsGoalsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
   const [savingGoals, setSavingGoals] = useState<SavingGoal[]>([]);
-  const [currencies, setCurrenciesState] = useState<Currency[]>([]); // Renamed
+  const [userCurrencies, setUserCurrencies] = useState<Currency[]>([]);
   const [baseCurrencySymbol, setBaseCurrencySymbol] = useState<string>("$");
+  const [isLoading, setIsLoading] = useState(true);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSavingGoal, setEditingSavingGoal] = useState<SavingGoal | undefined>(undefined);
-  const { toast } = useToast();
 
-  const refreshSavingGoalsState = React.useCallback(() => {
-    const sortedGoals = [...initialSavingGoalsData].sort((a, b) => {
-        if (a.targetDate && b.targetDate) {
-            return new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime();
-        }
-        if (a.targetDate && !b.targetDate) return -1; 
-        if (!a.targetDate && b.targetDate) return 1;  
-        return a.name.localeCompare(b.name); 
-    });
-    setSavingGoals(sortedGoals);
-  }, [initialSavingGoalsData]);
-
-  const refreshCurrenciesState = React.useCallback(() => {
-    setCurrenciesState([...initialCurrenciesData]);
-    setBaseCurrencySymbol(getCurrencySymbol(BASE_CURRENCY_ID, initialCurrenciesData));
-  }, [initialCurrenciesData]);
+  const fetchPageData = useCallback(async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const [fetchedGoals, fetchedCurrencies] = await Promise.all([
+        getSavingGoalsCol(user.uid),
+        getCurrenciesCol(user.uid)
+      ]);
+      setSavingGoals(fetchedGoals);
+      setUserCurrencies(fetchedCurrencies);
+      setBaseCurrencySymbol(getCurrencySymbol(BASE_CURRENCY_ID, fetchedCurrencies));
+    } catch (error) {
+      console.error("Error fetching savings goals data:", error);
+      toast({ title: "Error", description: "Could not load savings goals data.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, toast]);
 
   useEffect(() => {
-    refreshSavingGoalsState();
-    refreshCurrenciesState();
-  }, [
-      refreshSavingGoalsState,
-      refreshCurrenciesState,
-      initialSavingGoalsData, 
-      initialCurrenciesData
-    ]);
+    fetchPageData();
+  }, [fetchPageData]);
 
-  const handleAddGoal = (data: Omit<SavingGoal, "id" | "iconName">) => {
-    const newGoal: SavingGoal = { 
-        ...data, 
-        id: `sg${Date.now()}`, // Use Date.now() for better uniqueness
-        iconName: data.iconName || undefined, // Ensure iconName is properly handled
-    };
-    initialSavingGoalsData.push(newGoal);
-    refreshSavingGoalsState();
-    setIsFormOpen(false);
+  const handleAddGoal = async (data: Omit<SavingGoal, "id" | "iconName">) => {
+    if (!user) return;
+    // Form doesn't handle iconName directly yet, default to undefined or handle based on name
+    const goalData: Omit<SavingGoal, "id"> = { ...data, iconName: undefined }; 
+    try {
+      await addSavingGoalDoc(user.uid, goalData);
+      toast({ title: "Saving Goal Added!", description: `Goal "${data.name}" has been created.` });
+      fetchPageData();
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Could not add saving goal.", variant: "destructive" });
+    }
   };
 
-  const handleUpdateGoal = (data: Omit<SavingGoal, "id" | "iconName">) => {
-    if (!editingSavingGoal) return;
-    const indexInGlobal = initialSavingGoalsData.findIndex(goal => goal.id === editingSavingGoal.id);
-    if (indexInGlobal !== -1) {
-      initialSavingGoalsData[indexInGlobal] = { 
-        ...initialSavingGoalsData[indexInGlobal], 
-        ...data,
-        iconName: data.iconName || initialSavingGoalsData[indexInGlobal].iconName, // Preserve icon if not changed
-      };
+  const handleUpdateGoal = async (data: Omit<SavingGoal, "id" | "iconName">) => {
+    if (!user || !editingSavingGoal) return;
+    const updateData: Partial<Omit<SavingGoal, "id">> = { 
+        ...data, 
+        iconName: editingSavingGoal.iconName // Preserve existing icon name
+    };
+    try {
+      await updateSavingGoalDoc(user.uid, editingSavingGoal.id, updateData);
+      toast({ title: "Saving Goal Updated!", description: `Goal "${data.name}" has been updated.` });
+      fetchPageData();
+      setEditingSavingGoal(undefined);
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Could not update saving goal.", variant: "destructive" });
     }
-    refreshSavingGoalsState();
-    setEditingSavingGoal(undefined);
-    setIsFormOpen(false);
   };
 
   const handleEdit = (goal: SavingGoal) => {
@@ -90,18 +101,20 @@ export default function SavingsGoalsPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (goalId: string) => {
-    const indexInGlobal = initialSavingGoalsData.findIndex(goal => goal.id === goalId);
-    if (indexInGlobal !== -1) {
-      initialSavingGoalsData.splice(indexInGlobal, 1);
+  const handleDelete = async (goalId: string) => {
+    if(!user) return;
+    try {
+      await deleteSavingGoalDoc(user.uid, goalId);
+      toast({ title: "Saving Goal Deleted", description: "The saving goal has been removed.", variant: "destructive" });
+      fetchPageData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Could not delete saving goal.", variant: "destructive" });
     }
-    refreshSavingGoalsState();
-    toast({
-      title: "Saving Goal Deleted",
-      description: "The saving goal has been removed.",
-      variant: "destructive"
-    });
   };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><p>Loading saving goals...</p></div>;
+  }
   
   return (
     <div className="space-y-6">
@@ -150,5 +163,3 @@ export default function SavingsGoalsPage() {
     </div>
   );
 }
-
-    

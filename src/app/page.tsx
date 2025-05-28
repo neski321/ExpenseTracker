@@ -17,9 +17,9 @@ export default function LandingPage() {
 
   useEffect(() => {
     // Optional: if user is logged in and on landing, redirect to dashboard
-    // if (!loading && user) {
-    //   router.replace('/dashboard');
-    // }
+    if (!loading && user) {
+      router.replace('/dashboard');
+    }
   }, [user, loading, router]);
 
   if (loading) {

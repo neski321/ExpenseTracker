@@ -1,11 +1,11 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { CurrencyList } from "@/components/settings/currency-list";
 import { CurrencyForm } from "@/components/settings/currency-form";
-import { ExchangeRateForm } from "@/components/settings/exchange-rate-form"; 
+import { ExchangeRateForm } from "@/components/settings/exchange-rate-form";
 import type { Currency, ExchangeRate } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Settings as SettingsIcon, Trash2 } from "lucide-react";
@@ -30,15 +30,47 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { 
-    initialCurrenciesData, 
-    initialExchangeRatesData,
-    resetAllDataToDefaults, 
-    initialExpensesData, // For checking if currency is in use
-} from "@/lib/mock-data";
+import { useAuth } from "@/contexts/auth-context";
 import { BASE_CURRENCY_ID } from "@/lib/currency-utils";
+import {
+  addCurrencyDoc,
+  getCurrenciesCol,
+  updateCurrencyDoc,
+  deleteCurrencyDoc,
+} from "@/lib/services/currency-service";
+import {
+  getExchangeRatesCol,
+  setExchangeRateDoc,
+  deleteExchangeRateDoc, // Assuming you might want to delete a rate if a currency is deleted
+} from "@/lib/services/exchange-rate-service";
+import { seedDefaultUserData } from "@/lib/services/user-service";
+import { db } from '@/lib/firebase';
+import { collection, getDocs, writeBatch, doc, deleteDoc } from 'firebase/firestore';
+
+
+async function deleteAllDocsInUserCollection(userId: string, collectionName: string) {
+  if (!userId) {
+    console.error("User ID is undefined, cannot delete collection docs for:", collectionName);
+    return;
+  }
+  const userColRef = collection(db, 'users', userId, collectionName);
+  const snapshot = await getDocs(userColRef);
+  if (snapshot.empty) {
+    console.log(`No documents to delete in ${collectionName} for user ${userId}`);
+    return;
+  }
+
+  const batch = writeBatch(db);
+  snapshot.docs.forEach(docSnapshot => {
+    batch.delete(docSnapshot.ref);
+  });
+  await batch.commit();
+  console.log(`All documents deleted from ${collectionName} for user ${userId}`);
+}
+
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const router = useRouter();
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
@@ -46,93 +78,97 @@ export default function SettingsPage() {
   const [isRateFormOpen, setIsRateFormOpen] = useState(false);
   const [editingCurrency, setEditingCurrency] = useState<Currency | undefined>(undefined);
   const [currencyForRateEdit, setCurrencyForRateEdit] = useState<Currency | undefined>(undefined);
-  const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
+  
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Dialog states for granular clearing
+  const [isClearCategoriesDialogOpen, setIsClearCategoriesDialogOpen] = useState(false);
+  const [isClearingCategories, setIsClearingCategories] = useState(false);
+
+  const [isClearBudgetsDialogOpen, setIsClearBudgetsDialogOpen] = useState(false);
+  const [isClearingBudgets, setIsClearingBudgets] = useState(false);
+
+  const [isClearExpensesDialogOpen, setIsClearExpensesDialogOpen] = useState(false);
+  const [isClearingExpenses, setIsClearingExpenses] = useState(false);
+
+  const [isClearIncomesDialogOpen, setIsClearIncomesDialogOpen] = useState(false);
+  const [isClearingIncomes, setIsClearingIncomes] = useState(false);
+
+  const [isClearSavingsDialogOpen, setIsClearSavingsDialogOpen] = useState(false);
+  const [isClearingSavings, setIsClearingSavings] = useState(false);
+
 
   const { toast } = useToast();
 
-  const refreshCurrenciesState = React.useCallback(() => {
-    setCurrencies([...initialCurrenciesData]);
-  },[initialCurrenciesData]);
-
-  const refreshExchangeRatesState = React.useCallback(() => {
-    setExchangeRates([...initialExchangeRatesData]);
-  },[initialExchangeRatesData]);
+  const fetchSettingsData = useCallback(async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const [userCurrencies, userExchangeRates] = await Promise.all([
+        getCurrenciesCol(user.uid),
+        getExchangeRatesCol(user.uid),
+      ]);
+      setCurrencies(userCurrencies);
+      setExchangeRates(userExchangeRates);
+    } catch (error: any) {
+      console.error("Failed to load settings data:", error);
+      toast({ title: "Error", description: error.message || "Could not load settings data.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, toast]);
 
   useEffect(() => {
-    refreshCurrenciesState();
-    refreshExchangeRatesState();
-  }, [
-      refreshCurrenciesState, 
-      refreshExchangeRatesState,
-      initialCurrenciesData, // Add global arrays as direct dependencies
-      initialExchangeRatesData
-    ]);
-
-  const handleAddCurrency = (data: Omit<Currency, "id">) => {
-    const newCurrency = { 
-        ...data, 
-        id: `cur${Date.now()}`, // Use Date.now() for better uniqueness
-    };
-    initialCurrenciesData.push(newCurrency);
-    // Add a default exchange rate if it's not the base currency
-    if (newCurrency.id !== BASE_CURRENCY_ID) {
-        initialExchangeRatesData.push({ currencyId: newCurrency.id, rateToBase: 1.0 });
+    if (user) {
+      fetchSettingsData();
+    } else {
+      setIsLoading(false);
     }
-    
-    refreshCurrenciesState();
-    refreshExchangeRatesState();
-    setIsCurrencyFormOpen(false);
-    toast({ title: "Currency Added", description: `${data.name} (${data.code}) has been added.` });
+  }, [user, fetchSettingsData]);
+
+  const handleAddCurrency = async (data: Omit<Currency, "id">) => {
+    if (!user) return;
+    try {
+      // Firestore ID will be auto-generated by addDoc in service if not provided from mock
+      // For user-added currencies, we let Firestore generate the ID.
+      const newCurrency = await addCurrencyDoc(user.uid, { ...data, id: `cur-user-${Date.now()}` }); // ensure an ID is passed for setDoc logic
+      if (newCurrency.id !== BASE_CURRENCY_ID) {
+        await setExchangeRateDoc(user.uid, newCurrency.id, 1.0);
+      }
+      toast({ title: "Currency Added", description: `${data.name} (${data.code}) has been added.` });
+      fetchSettingsData();
+      setIsCurrencyFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error Adding Currency", description: error.message || "Could not add currency.", variant: "destructive" });
+    }
   };
 
-  const handleUpdateCurrency = (data: Omit<Currency, "id">) => {
-    if (!editingCurrency) return;
-    // Prevent changing code of base currency if it's USD
-    if (editingCurrency.id === BASE_CURRENCY_ID && editingCurrency.code === "USD" && data.code !== "USD") {
-         toast({ title: "Action Denied", description: "Cannot change the code of the base currency USD.", variant: "destructive" });
-         return;
+  const handleUpdateCurrency = async (data: Omit<Currency, "id">) => {
+    if (!user || !editingCurrency) return;
+    try {
+      await updateCurrencyDoc(user.uid, editingCurrency.id, data);
+      toast({ title: "Currency Updated", description: `${data.name} (${data.code}) has been updated.` });
+      fetchSettingsData();
+      setEditingCurrency(undefined);
+      setIsCurrencyFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error Updating Currency", description: error.message || "Could not update currency.", variant: "destructive" });
     }
-
-    const indexInGlobal = initialCurrenciesData.findIndex(curr => curr.id === editingCurrency.id);
-    if (indexInGlobal !== -1) {
-        initialCurrenciesData[indexInGlobal] = { ...initialCurrenciesData[indexInGlobal], ...data };
-    }
-    refreshCurrenciesState();
-    setEditingCurrency(undefined);
-    setIsCurrencyFormOpen(false);
-    toast({ title: "Currency Updated", description: `${data.name} (${data.code}) has been updated.` });
   };
-  
-  const handleDeleteCurrency = (currencyId: string) => {
-    if (currencyId === BASE_CURRENCY_ID) {
-        toast({ title: "Action Denied", description: "Cannot delete the base currency.", variant: "destructive" });
-        return;
-    }
-    if (initialCurrenciesData.length <= 1) {
-        toast({ title: "Action Denied", description: "Cannot delete the only remaining currency.", variant: "destructive" });
-        return;
-    }
-    // Check if currency is in use by any expense
-    const isCurrencyUsed = initialExpensesData.some(exp => exp.currencyId === currencyId);
-    // TODO: Also check initialIncomesData if/when income uses multi-currency
-    if (isCurrencyUsed) {
-        toast({
-            title: "Cannot Delete Currency",
-            description: "This currency is currently used by one or more expenses or income entries. Please reassign them first.",
-            variant: "destructive",
-        });
-        return;
-    }
 
-    const currencyIndex = initialCurrenciesData.findIndex(curr => curr.id === currencyId);
-    if (currencyIndex > -1) initialCurrenciesData.splice(currencyIndex, 1);
-
-    const rateIndex = initialExchangeRatesData.findIndex(rate => rate.currencyId === currencyId);
-    if (rateIndex > -1) initialExchangeRatesData.splice(rateIndex, 1);
-
-    refreshCurrenciesState();
-    refreshExchangeRatesState();
-    toast({ title: "Currency Deleted", variant: "destructive" });
+  const handleDeleteCurrency = async (currencyId: string) => {
+    if (!user) return;
+    try {
+      await deleteCurrencyDoc(user.uid, currencyId);
+      await deleteExchangeRateDoc(user.uid, currencyId);
+      toast({ title: "Currency Deleted", variant: "destructive", description: "Currency and its exchange rate removed." });
+      fetchSettingsData();
+    } catch (error: any) {
+      toast({ title: "Cannot Delete Currency", description: error.message || "Could not delete currency.", variant: "destructive" });
+    }
   };
 
   const handleOpenEditCurrency = (currency: Currency) => {
@@ -145,36 +181,71 @@ export default function SettingsPage() {
     setIsRateFormOpen(true);
   };
 
-  const handleSetExchangeRate = (currencyId: string, rate: number) => {
-    const existingRateIndex = initialExchangeRatesData.findIndex(r => r.currencyId === currencyId);
-    if (existingRateIndex > -1) {
-      initialExchangeRatesData[existingRateIndex].rateToBase = rate;
-    } else {
-      // This case should ideally not happen if rate is added when currency is added
-      initialExchangeRatesData.push({ currencyId, rateToBase: rate });
+  const handleSetExchangeRate = async (currencyId: string, rate: number) => {
+    if (!user) return;
+    try {
+      await setExchangeRateDoc(user.uid, currencyId, rate);
+      const currency = currencies.find(c => c.id === currencyId);
+      toast({ title: "Exchange Rate Set", description: `Rate for ${currency?.code} updated to ${rate}.` });
+      fetchSettingsData();
+      setIsRateFormOpen(false);
+      setCurrencyForRateEdit(undefined);
+    } catch (error: any) {
+      toast({ title: "Error Setting Rate", description: error.message || "Could not set exchange rate.", variant: "destructive" });
     }
-    refreshExchangeRatesState();
-    setIsRateFormOpen(false);
-    setCurrencyForRateEdit(undefined);
-    const currency = currencies.find(c => c.id === currencyId);
-    toast({ title: "Exchange Rate Set", description: `Rate for ${currency?.code} updated to ${rate}.` });
   };
 
-  const handleConfirmClearData = () => {
-    resetAllDataToDefaults();
-    // The individual refresh...State functions will be called by the main useEffect
-    // due to their dependency on the global mock data arrays.
-    // However, to ensure the dashboard and other complex pages fully re-evaluate,
-    // router.refresh() is still beneficial.
-    router.refresh(); 
-    toast({
-      title: "Application Data Cleared",
-      description: "All entries have been erased and settings reset to default.",
-      variant: "destructive"
-    });
-    setIsClearDataDialogOpen(false);
+  const handleConfirmClearData = async (
+    collectionName: string,
+    setDialogState: React.Dispatch<React.SetStateAction<boolean>>,
+    setClearingState: React.Dispatch<React.SetStateAction<boolean>>,
+    itemDisplayName: string,
+    reSeedDefaults: boolean
+  ) => {
+    if (!user) {
+      toast({ title: "Error", description: "You must be logged in.", variant: "destructive" });
+      setDialogState(false);
+      return;
+    }
+    setClearingState(true);
+    toast({ title: `Clearing ${itemDisplayName}...`, description: "Please wait. This may take a moment." });
+
+    try {
+      await deleteAllDocsInUserCollection(user.uid, collectionName);
+      if (reSeedDefaults) {
+        await seedDefaultUserData(user.uid); // This re-seeds all structural defaults
+        toast({
+          title: `${itemDisplayName} Cleared & Defaults Re-seeded!`,
+          description: `All your ${itemDisplayName.toLowerCase()} have been cleared, and default settings for the app have been restored.`,
+          duration: 7000,
+        });
+      } else {
+         toast({
+          title: `${itemDisplayName} Cleared!`,
+          description: `All your ${itemDisplayName.toLowerCase()} have been cleared.`,
+          duration: 7000,
+        });
+      }
+      window.location.reload(); // Force full refresh
+    } catch (error: any) {
+      console.error(`Error clearing ${itemDisplayName.toLowerCase()}:`, error);
+      toast({
+        title: `Error Clearing ${itemDisplayName}`,
+        description: error.message || `Could not clear ${itemDisplayName.toLowerCase()}. Please try again.`,
+        variant: "destructive",
+      });
+    } finally {
+      setDialogState(false);
+      setClearingState(false);
+    }
   };
 
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><p>Loading settings...</p></div>;
+  }
+
+  const baseCurrency = currencies.find(c => c.id === BASE_CURRENCY_ID);
 
   return (
     <div className="space-y-6">
@@ -184,7 +255,7 @@ export default function SettingsPage() {
             <SettingsIcon className="mr-3 h-7 w-7 text-primary" />
             <div>
                 <CardTitle className="text-2xl">Settings</CardTitle>
-                <CardDescription>Manage application settings, including currencies, exchange rates, and data.</CardDescription>
+                <CardDescription>Manage application currencies and data.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -194,14 +265,14 @@ export default function SettingsPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-xl">Manage Currencies</CardTitle>
-            <CardDescription>Add, edit, or remove currencies used in the application.</CardDescription>
+            <CardDescription>Base currency: {baseCurrency ? `${baseCurrency.name} (${baseCurrency.code})` : "Loading..."}. Add or edit other currencies.</CardDescription>
           </div>
           <Dialog open={isCurrencyFormOpen} onOpenChange={(isOpen) => {
             setIsCurrencyFormOpen(isOpen);
             if (!isOpen) setEditingCurrency(undefined);
           }}>
             <DialogTrigger asChild>
-              <Button className="shadow-md">
+              <Button className="shadow-md" disabled={isLoading}>
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingCurrency ? "Edit Currency" : "Add New Currency"}
               </Button>
             </DialogTrigger>
@@ -209,7 +280,7 @@ export default function SettingsPage() {
                 <DialogHeader>
                     <DialogTitle>{editingCurrency ? "Edit Currency" : "Add New Currency"}</DialogTitle>
                 </DialogHeader>
-                <CurrencyForm 
+                <CurrencyForm
                     onSubmit={editingCurrency ? handleUpdateCurrency : handleAddCurrency}
                     existingCurrency={editingCurrency}
                 />
@@ -217,16 +288,20 @@ export default function SettingsPage() {
           </Dialog>
         </CardHeader>
         <CardContent>
-          <CurrencyList 
+          <CurrencyList
             currencies={currencies}
             exchangeRates={exchangeRates}
             onEditCurrency={handleOpenEditCurrency}
             onDeleteCurrency={handleDeleteCurrency}
             onEditRate={handleOpenRateEdit}
+            baseCurrencyId={BASE_CURRENCY_ID}
           />
+           {currencies.length === 0 && !isLoading && (
+            <p className="text-muted-foreground text-center py-4">No currencies found. Add one to get started or wait for defaults to load.</p>
+          )}
         </CardContent>
       </Card>
-      
+
       {currencyForRateEdit && (
         <Dialog open={isRateFormOpen} onOpenChange={(isOpen) => {
             setIsRateFormOpen(isOpen);
@@ -235,10 +310,11 @@ export default function SettingsPage() {
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Set Exchange Rate for {currencyForRateEdit.code}</DialogTitle>
-                    <DialogDescription>Define the rate to convert 1 {currencyForRateEdit.code} to the base currency ({currencies.find(c=>c.id === BASE_CURRENCY_ID)?.code}).</DialogDescription>
+                    <DialogDescription>Define the rate to convert 1 {currencyForRateEdit.code} to the base currency ({baseCurrency?.code || "USD"}).</DialogDescription>
                 </DialogHeader>
                 <ExchangeRateForm
                     currency={currencyForRateEdit}
+                    baseCurrencyCode={baseCurrency?.code || "USD"}
                     currentRate={exchangeRates.find(r => r.currencyId === currencyForRateEdit.id)?.rateToBase || 1.0}
                     onSubmit={(rate) => handleSetExchangeRate(currencyForRateEdit.id, rate)}
                 />
@@ -249,39 +325,130 @@ export default function SettingsPage() {
       <Card className="shadow-xl border-destructive/50">
         <CardHeader>
             <CardTitle className="text-xl text-destructive">Data Management</CardTitle>
-            <CardDescription>Perform actions related to all application data.</CardDescription>
+            <CardDescription>Permanently clear specific types of your application data.</CardDescription>
         </CardHeader>
-        <CardContent>
-            <AlertDialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Clear Categories */}
+            <AlertDialog open={isClearCategoriesDialogOpen} onOpenChange={setIsClearCategoriesDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full sm:w-auto shadow-md">
-                        <Trash2 className="mr-2 h-4 w-4" /> Clear All Application Data
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingCategories}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingCategories ? "Clearing..." : "Clear Categories"}
                     </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogTitle>Clear Categories?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete all
-                        your expenses, income, custom categories, payment methods, budgets, and saving goals, 
-                        and reset currencies and exchange rates to their defaults.
+                        This will delete all your categories and re-seed the default ones. Expenses/Budgets using custom categories might need adjustment. This action cannot be undone.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleConfirmClearData} className={/* Use default destructive variant from button itself */ ""}>
-                        Yes, Clear All Data
+                    <AlertDialogCancel disabled={isClearingCategories}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleConfirmClearData('categories', setIsClearCategoriesDialogOpen, setIsClearingCategories, 'Categories', true)} disabled={isClearingCategories}>
+                        Yes, Clear Categories
                     </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-            <p className="text-xs text-muted-foreground mt-2">
-                Use this option to reset the application to its initial state.
+
+            {/* Clear Budget Goals */}
+             <AlertDialog open={isClearBudgetsDialogOpen} onOpenChange={setIsClearBudgetsDialogOpen}>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingBudgets}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingBudgets ? "Clearing..." : "Clear Budgets"}
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Clear Budget Goals?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will delete all your budget goals and re-seed any default sample goals. This action cannot be undone.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isClearingBudgets}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleConfirmClearData('budgetGoals', setIsClearBudgetsDialogOpen, setIsClearingBudgets, 'Budget Goals', true)} disabled={isClearingBudgets}>
+                        Yes, Clear Budgets
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Clear Expenses */}
+            <AlertDialog open={isClearExpensesDialogOpen} onOpenChange={setIsClearExpensesDialogOpen}>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingExpenses}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingExpenses ? "Clearing..." : "Clear Expenses"}
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Clear All Expenses?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will permanently delete all your expense entries. This action cannot be undone.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isClearingExpenses}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleConfirmClearData('expenses', setIsClearExpensesDialogOpen, setIsClearingExpenses, 'Expenses', false)} disabled={isClearingExpenses}>
+                        Yes, Clear Expenses
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Clear Incomes */}
+            <AlertDialog open={isClearIncomesDialogOpen} onOpenChange={setIsClearIncomesDialogOpen}>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingIncomes}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingIncomes ? "Clearing..." : "Clear Incomes"}
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Clear All Incomes?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will permanently delete all your income entries. This action cannot be undone.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isClearingIncomes}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleConfirmClearData('incomes', setIsClearIncomesDialogOpen, setIsClearingIncomes, 'Incomes', false)} disabled={isClearingIncomes}>
+                        Yes, Clear Incomes
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            
+            {/* Clear Saving Goals */}
+            <AlertDialog open={isClearSavingsDialogOpen} onOpenChange={setIsClearSavingsDialogOpen}>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingSavings}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingSavings ? "Clearing..." : "Clear Saving Goals"}
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Clear Saving Goals?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will delete all your saving goals and re-seed any default sample goals. This action cannot be undone.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isClearingSavings}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleConfirmClearData('savingGoals', setIsClearSavingsDialogOpen, setIsClearingSavings, 'Saving Goals', true)} disabled={isClearingSavings}>
+                        Yes, Clear Saving Goals
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </CardContent>
+         <CardContent className="pt-2">
+             <p className="text-xs text-muted-foreground mt-2">
+                These operations will delete specific sets of your financial data from the database. Structural data like categories will be reset to defaults if cleared.
             </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    

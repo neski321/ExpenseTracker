@@ -1,11 +1,10 @@
 
-"use client";
+"use client"; // This layout needs to be a client component to use hooks
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ExpenseList } from "@/components/expenses/expense-list";
 import type { Expense, PaymentMethod, Category, Currency } from "@/lib/types"; 
-import { initialCategoriesData, initialExpensesData, initialPaymentMethodsData, initialCurrenciesData } from "@/lib/mock-data"; 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -18,56 +17,71 @@ import {
 } from "@/components/ui/dialog";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 import { getYear, isValid } from 'date-fns';
+import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc } from "@/lib/services/expense-service";
+import { getCategoriesCol } from "@/lib/services/category-service";
+import { getPaymentMethodsCol } from "@/lib/services/payment-method-service";
+import { getCurrenciesCol } from "@/lib/services/currency-service";
 
 export default function YearlyExpensesOverviewPage() {
+  const { user } = useAuth();
   const params = useParams();
   const router = useRouter();
   const year = parseInt(params.year as string);
 
   const [yearlyExpenses, setYearlyExpenses] = useState<Expense[]>([]);
-  const [allPaymentMethods, setAllPaymentMethodsState] = useState<PaymentMethod[]>([]); // Renamed
-  const [allCategories, setAllCategoriesState] = useState<Category[]>([]); // Renamed
-  const [allCurrencies, setAllCurrenciesState] = useState<Currency[]>([]); // Renamed
+  const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [userCategories, setUserCategories] = useState<Category[]>([]);
+  const [userCurrencies, setUserCurrencies] = useState<Currency[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const { toast } = useToast();
 
-  const loadYearlyExpenses = React.useCallback(() => {
-    if (isNaN(year)) {
-      console.error("Invalid year param");
+  const fetchPageData = useCallback(async () => {
+    if (!user || isNaN(year)) {
+      setIsLoading(false);
       setYearlyExpenses([]);
+      console.error("Invalid user or year param for yearly overview.");
       return;
     }
-    const filtered = initialExpensesData.filter(exp => 
-      isValid(new Date(exp.date)) &&
-      getYear(new Date(exp.date)) === year
-    ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    setYearlyExpenses(filtered);
-  }, [year, initialExpensesData]); // Added initialExpensesData dependency
+    setIsLoading(true);
+    try {
+      const [
+        allUserExpenses, 
+        fetchedUserCategories, 
+        fetchedUserPaymentMethods, 
+        fetchedUserCurrencies
+      ] = await Promise.all([
+        getExpensesCol(user.uid),
+        getCategoriesCol(user.uid),
+        getPaymentMethodsCol(user.uid),
+        getCurrenciesCol(user.uid),
+      ]);
 
-  const refreshAllPaymentMethods = React.useCallback(() => setAllPaymentMethodsState([...initialPaymentMethodsData]), [initialPaymentMethodsData]);
-  const refreshAllCategories = React.useCallback(() => setAllCategoriesState([...initialCategoriesData]), [initialCategoriesData]);
-  const refreshAllCurrencies = React.useCallback(() => setAllCurrenciesState([...initialCurrenciesData]), [initialCurrenciesData]);
+      setUserCategories(fetchedUserCategories);
+      setUserPaymentMethods(fetchedUserPaymentMethods);
+      setUserCurrencies(fetchedUserCurrencies);
+
+      const filtered = allUserExpenses.filter(exp => 
+        isValid(new Date(exp.date)) &&
+        getYear(new Date(exp.date)) === year
+      ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setYearlyExpenses(filtered);
+
+    } catch (error) {
+      console.error("Error fetching yearly overview data:", error);
+      toast({title: "Error", description: "Could not load data for this year.", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, year, toast]);
 
   useEffect(() => {
-    loadYearlyExpenses();
-    refreshAllPaymentMethods();
-    refreshAllCategories();
-    refreshAllCurrencies();
-  }, [
-      year, 
-      loadYearlyExpenses,
-      refreshAllPaymentMethods,
-      refreshAllCategories,
-      refreshAllCurrencies,
-      // Global arrays as direct dependencies
-      initialExpensesData,
-      initialPaymentMethodsData,
-      initialCategoriesData,
-      initialCurrenciesData
-    ]);
+    fetchPageData();
+  }, [fetchPageData]);
 
   const pageTitle = `Expenses for ${year}`;
 
@@ -76,20 +90,22 @@ export default function YearlyExpensesOverviewPage() {
     setIsFormOpen(true);
   };
 
-  const handleUpdateExpense = (data: Omit<Expense, "id">) => {
-    if (!editingExpense) return;
-    const indexInGlobal = initialExpensesData.findIndex(exp => exp.id === editingExpense.id);
-    if (indexInGlobal !== -1) {
-      initialExpensesData[indexInGlobal] = { ...initialExpensesData[indexInGlobal], ...data };
+  const handleUpdateExpense = async (data: Omit<Expense, "id">) => {
+    if (!user || !editingExpense) return;
+    try {
+      await updateFirestoreExpenseDoc(user.uid, editingExpense.id, data);
+      toast({ title: "Expense Updated", description: `"${data.description}" has been updated.` });
+      fetchPageData(); // Re-fetch all data
+      setEditingExpense(undefined);
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({title: "Error", description: error.message || "Could not update expense.", variant: "destructive"});
     }
-    loadYearlyExpenses(); // Refresh the list on this page
-    setEditingExpense(undefined);
-    setIsFormOpen(false);
-    toast({
-      title: "Expense Updated",
-      description: `"${data.description}" has been updated.`,
-    });
   };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><p>Loading yearly expenses...</p></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -104,14 +120,17 @@ export default function YearlyExpensesOverviewPage() {
         <CardContent>
           <ExpenseList 
             expenses={yearlyExpenses} 
-            categories={allCategories} 
-            paymentMethods={allPaymentMethods}
-            currencies={allCurrencies} 
+            categories={userCategories} 
+            paymentMethods={userPaymentMethods}
+            currencies={userCurrencies} 
             onEdit={handleEdit} 
-            onDelete={() => {}} 
+            onDelete={(expenseId) => { /* Deletion logic */ 
+              console.log("Delete requested for: ", expenseId);
+              toast({title: "Info", description: "Deletion from this view not fully implemented."});
+            }} 
             sourcePageIdentifier="overview"
           />
-            {yearlyExpenses.length === 0 && (
+            {yearlyExpenses.length === 0 && !isLoading && (
              <p className="text-muted-foreground text-center py-4">No expenses recorded for this year.</p>
            )}
         </CardContent>
@@ -130,9 +149,9 @@ export default function YearlyExpensesOverviewPage() {
           </DialogHeader>
           {editingExpense && (
             <ExpenseForm
-              categories={allCategories}
-              paymentMethods={allPaymentMethods}
-              currencies={allCurrencies}
+              categories={userCategories}
+              paymentMethods={userPaymentMethods}
+              currencies={userCurrencies}
               onSubmit={handleUpdateExpense}
               initialData={editingExpense}
             />
@@ -142,5 +161,3 @@ export default function YearlyExpensesOverviewPage() {
     </div>
   );
 }
-
-    

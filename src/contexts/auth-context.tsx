@@ -4,10 +4,11 @@
 import type { User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation"; // Removed usePathname as it's not used
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { signUpWithEmail, signInWithEmail, signOutUser } from "@/lib/firebase-auth"; 
+import { signUpWithEmail, signInWithEmail, signOutUser } from "@/lib/firebase-auth";
 import type { SignUpCredentials, SignInCredentials } from "@/lib/firebase-auth";
+import { seedDefaultUserData } from "@/lib/services/user-service"; // Import the seeding function
 
 interface AuthContextType {
   user: User | null;
@@ -23,7 +24,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
+  // const pathname = usePathname(); // Not used
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -36,7 +37,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const handleSignUp = async (credentials: SignUpCredentials) => {
     try {
       const firebaseUser = await signUpWithEmail(credentials.email, credentials.password);
-      setUser(firebaseUser);
+      if (firebaseUser) {
+        await seedDefaultUserData(firebaseUser.uid); // Seed data for new user
+        setUser(firebaseUser); // Update local auth state
+      }
       return firebaseUser;
     } catch (error) {
       console.error("Signup error in AuthContext:", error);
@@ -47,7 +51,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const handleSignIn = async (credentials: SignInCredentials) => {
      try {
       const firebaseUser = await signInWithEmail(credentials.email, credentials.password);
-      setUser(firebaseUser);
+      setUser(firebaseUser); // Update local auth state
       return firebaseUser;
     } catch (error) {
       console.error("Signin error in AuthContext:", error);
@@ -58,7 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const handleLogOut = async () => {
     try {
       await signOutUser();
-      setUser(null);
+      setUser(null); // Clear local auth state
       router.push('/login'); // Redirect to login after logout
     } catch (error) {
        console.error("Logout error in AuthContext:", error);

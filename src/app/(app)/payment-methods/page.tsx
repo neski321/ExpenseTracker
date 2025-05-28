@@ -1,7 +1,7 @@
 
-"use client";
+"use client"; // This layout needs to be a client component to use hooks
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { PaymentMethodForm } from "@/components/payment-methods/payment-method-form";
 import { PaymentMethodList } from "@/components/payment-methods/payment-method-list";
 import type { PaymentMethod } from "@/lib/types";
@@ -17,44 +17,63 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { initialPaymentMethodsData, initialExpensesData } from "@/lib/mock-data"; // Added initialExpensesData
+import { useAuth } from "@/contexts/auth-context";
+import {
+  addPaymentMethodDoc,
+  getPaymentMethodsCol,
+  updatePaymentMethodDoc,
+  deletePaymentMethodDoc,
+} from "@/lib/services/payment-method-service";
 
 export default function PaymentMethodsPage() {
+  const { user } = useAuth();
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPaymentMethod, setEditingPaymentMethod] = useState<PaymentMethod | undefined>(undefined);
   const { toast } = useToast();
 
-  const refreshPaymentMethodsState = React.useCallback(() => {
-    setPaymentMethods([...initialPaymentMethodsData]);
-  }, [initialPaymentMethodsData]);
+  const fetchPaymentMethods = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const userPaymentMethods = await getPaymentMethodsCol(user.uid);
+      setPaymentMethods(userPaymentMethods);
+    } catch (error) {
+      console.error("Failed to fetch payment methods:", error);
+      toast({ title: "Error", description: "Could not load payment methods.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, toast]);
 
   useEffect(() => {
-    refreshPaymentMethodsState();
-  }, [refreshPaymentMethodsState, initialPaymentMethodsData]); // Ensure initialPaymentMethodsData is a dependency
+    fetchPaymentMethods();
+  }, [fetchPaymentMethods]);
 
-  const handleAddPaymentMethod = (data: Omit<PaymentMethod, "id">) => {
-    const newPaymentMethod = { 
-        ...data, 
-        id: `pm${Date.now()}`, // Use Date.now() for better uniqueness
-    };
-    initialPaymentMethodsData.push(newPaymentMethod);
-    refreshPaymentMethodsState();
-    setIsFormOpen(false);
+  const handleAddPaymentMethod = async (data: Omit<PaymentMethod, "id">) => {
+    if (!user) return;
+    try {
+      await addPaymentMethodDoc(user.uid, data);
+      toast({ title: "Payment Method Added!", description: `"${data.name}" has been successfully added.` });
+      fetchPaymentMethods(); // Refresh list
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error Adding Method", description: error.message || "Could not add payment method.", variant: "destructive" });
+    }
   };
 
-  const handleUpdatePaymentMethod = (data: Omit<PaymentMethod, "id">) => {
-    if (!editingPaymentMethod) return;
-    const indexInGlobal = initialPaymentMethodsData.findIndex(pm => pm.id === editingPaymentMethod.id);
-    if (indexInGlobal !== -1) {
-      initialPaymentMethodsData[indexInGlobal] = { 
-        ...initialPaymentMethodsData[indexInGlobal], 
-        name: data.name 
-      };
+  const handleUpdatePaymentMethod = async (data: Omit<PaymentMethod, "id">) => {
+    if (!user || !editingPaymentMethod) return;
+    try {
+      await updatePaymentMethodDoc(user.uid, editingPaymentMethod.id, data);
+      toast({ title: "Payment Method Updated!", description: `"${data.name}" has been successfully updated.` });
+      fetchPaymentMethods(); // Refresh list
+      setEditingPaymentMethod(undefined);
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error Updating Method", description: error.message || "Could not update payment method.", variant: "destructive" });
     }
-    refreshPaymentMethodsState();
-    setEditingPaymentMethod(undefined);
-    setIsFormOpen(false);
   };
 
   const handleEdit = (paymentMethod: PaymentMethod) => {
@@ -62,29 +81,25 @@ export default function PaymentMethodsPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (paymentMethodId: string) => {
-    const isUsedInExpenses = initialExpensesData.some(exp => exp.paymentMethodId === paymentMethodId);
-     if (isUsedInExpenses) {
+  const handleDelete = async (paymentMethodId: string) => {
+    if (!user) return;
+    try {
+      await deletePaymentMethodDoc(user.uid, paymentMethodId);
+      toast({ title: "Payment Method Deleted", description: "The payment method has been removed.", variant: "destructive" });
+      fetchPaymentMethods(); // Refresh list
+    } catch (error: any) {
       toast({
-        title: "Cannot Delete Payment Method",
-        description: "This payment method is currently used by one or more expenses. Please reassign those expenses first.",
+        title: "Cannot Delete Method",
+        description: error.message || "Could not delete payment method.",
         variant: "destructive",
       });
-      return;
     }
-
-    const indexInGlobal = initialPaymentMethodsData.findIndex(pm => pm.id === paymentMethodId);
-    if (indexInGlobal !== -1) {
-      initialPaymentMethodsData.splice(indexInGlobal, 1);
-    }
-    refreshPaymentMethodsState();
-    toast({
-      title: "Payment Method Deleted",
-      description: "The payment method has been removed successfully.",
-      variant: "destructive"
-    });
   };
   
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><p>Loading payment methods...</p></div>;
+  }
+
   return (
     <div className="space-y-6">
       <Card className="shadow-xl">
@@ -130,5 +145,3 @@ export default function PaymentMethodsPage() {
     </div>
   );
 }
-
-    

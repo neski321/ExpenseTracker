@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import type { Currency } from "@/lib/types";
 import { BASE_CURRENCY_ID } from "@/lib/currency-utils";
-import { initialCurrenciesData } from "@/lib/mock-data"; // To get base currency code
+
 
 const exchangeRateFormSchema = z.object({
   rateToBase: z.coerce.number().positive("Exchange rate must be a positive number."),
@@ -28,10 +28,10 @@ interface ExchangeRateFormProps {
   currency: Currency;
   currentRate?: number;
   onSubmit: (rate: number) => void;
+  baseCurrencyCode: string; // Added prop
 }
 
-export function ExchangeRateForm({ currency, currentRate, onSubmit }: ExchangeRateFormProps) {
-  const baseCurrencyCode = initialCurrenciesData.find(c => c.id === BASE_CURRENCY_ID)?.code || "BASE";
+export function ExchangeRateForm({ currency, currentRate, onSubmit, baseCurrencyCode }: ExchangeRateFormProps) {
   const form = useForm<ExchangeRateFormValues>({
     resolver: zodResolver(exchangeRateFormSchema),
     defaultValues: {
@@ -70,3 +70,5 @@ export function ExchangeRateForm({ currency, currentRate, onSubmit }: ExchangeRa
     </Form>
   );
 }
+
+      
