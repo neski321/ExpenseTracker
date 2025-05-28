@@ -27,7 +27,11 @@ const loginFormSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginFormSchema>;
 
-export function LoginForm() {
+interface LoginFormProps {
+  onForgotPasswordClick: () => void; // Callback to open the forgot password dialog
+}
+
+export function LoginForm({ onForgotPasswordClick }: LoginFormProps) {
   const { signIn } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
@@ -49,7 +53,7 @@ export function LoginForm() {
         title: "Login Successful!",
         description: "Welcome back!",
       });
-      router.push("/dashboard"); // Redirect to dashboard or desired page
+      router.push("/dashboard");
     } catch (error: any) {
       toast({
         title: "Login Failed",
@@ -71,7 +75,7 @@ export function LoginForm() {
             <FormItem>
               <FormLabel>Email Address</FormLabel>
               <FormControl>
-                <Input type="email" placeholder="you@example.com" {...field} />
+                <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -84,12 +88,23 @@ export function LoginForm() {
             <FormItem>
               <FormLabel>Password</FormLabel>
               <FormControl>
-                <Input type="password" placeholder="••••••••" {...field} />
+                <Input type="password" placeholder="••••••••" {...field} disabled={isLoading} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+        <div className="text-sm">
+          <Button
+            type="button"
+            variant="link"
+            onClick={onForgotPasswordClick}
+            className="p-0 h-auto font-semibold text-primary hover:underline"
+            disabled={isLoading}
+          >
+            Forgot Password?
+          </Button>
+        </div>
         <Button type="submit" className="w-full shadow-md" disabled={isLoading}>
           {isLoading ? (
             "Logging in..."

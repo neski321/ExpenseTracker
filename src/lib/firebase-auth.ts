@@ -4,6 +4,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
+  sendPasswordResetEmail as firebaseSendPasswordResetEmail, // Renamed for clarity
   type UserCredential,
   type User
 } from "firebase/auth";
@@ -24,7 +25,6 @@ export const signUpWithEmail = async (email: string, password: string): Promise<
     const userCredential: UserCredential = await createUserWithEmailAndPassword(auth, email, password);
     return userCredential.user;
   } catch (error) {
-    // Handle specific Firebase errors or re-throw
     console.error("Firebase signup error:", error);
     const firebaseError = error as FirebaseError;
     if (firebaseError.code === 'auth/email-already-in-use') {
@@ -47,6 +47,19 @@ export const signInWithEmail = async (email: string, password: string): Promise<
       throw new Error('Invalid email or password.');
     }
     throw new Error(firebaseError.message || "An unknown error occurred during sign in.");
+  }
+};
+
+export const sendPasswordReset = async (email: string): Promise<void> => {
+  try {
+    await firebaseSendPasswordResetEmail(auth, email);
+  } catch (error) {
+    console.error("Firebase password reset error:", error);
+    const firebaseError = error as FirebaseError;
+    if (firebaseError.code === 'auth/user-not-found') {
+      throw new Error('No user found with this email address.');
+    }
+    throw new Error(firebaseError.message || "Could not send password reset email. Please try again.");
   }
 };
 
