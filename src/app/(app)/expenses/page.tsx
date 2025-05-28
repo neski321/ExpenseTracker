@@ -199,7 +199,9 @@ export default function ExpensesPage() {
         getPaymentMethodsCol(user.uid),
         getCurrenciesCol(user.uid)
       ]);
+      
       // Update local state for these if needed for immediate use by ExpenseForm after import
+      // (already fetched via fetchPageData, so this might just re-confirm)
       setCategories(userCategories); 
       setPaymentMethods(userPaymentMethods);
       setCurrencies(userCurrencies);
@@ -220,7 +222,7 @@ export default function ExpensesPage() {
       if (createdCategoryCount > 0) {
         // If categories were created, we need to re-fetch them to update the category list for the form
         const updatedUserCategories = await getCategoriesCol(user.uid);
-        setCategories(updatedUserCategories);
+        setCategories(updatedUserCategories); // Update local state for the form
       }
       
       fetchPageData(); // Refresh all expense data from Firestore
@@ -306,7 +308,7 @@ export default function ExpensesPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingExpense ? "Edit Expense" : "Add New Expense"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[525px]">
+            <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingExpense ? "Edit Expense" : "Add New Expense"}</DialogTitle>
                 <DialogDescription>

@@ -1,5 +1,5 @@
 
-"use client"; // This layout needs to be a client component to use hooks
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { SavingGoalForm } from "@/components/savings/saving-goal-form";
@@ -136,7 +136,7 @@ export default function SavingsGoalsPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingSavingGoal ? "Edit Goal" : "Add New Goal"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[525px]">
+            <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{editingSavingGoal ? "Edit Saving Goal" : "Add New Saving Goal"}</DialogTitle>
                     <DialogDescription>

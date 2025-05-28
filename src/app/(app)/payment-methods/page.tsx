@@ -1,5 +1,5 @@
 
-"use client"; // This layout needs to be a client component to use hooks
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { PaymentMethodForm } from "@/components/payment-methods/payment-method-form";
@@ -120,7 +120,7 @@ export default function PaymentMethodsPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingPaymentMethod ? "Edit Method" : "Add New Method"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{editingPaymentMethod ? "Edit Payment Method" : "Add New Payment Method"}</DialogTitle>
                     <DialogDescription>

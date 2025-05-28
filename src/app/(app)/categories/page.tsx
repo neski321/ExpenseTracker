@@ -1,5 +1,5 @@
 
-"use client"; // This layout needs to be a client component to use hooks
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { CategoryForm } from "@/components/categories/category-form";
@@ -133,7 +133,7 @@ export default function CategoriesPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingCategory ? "Edit Category" : "Add New Category"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{editingCategory ? "Edit Category" : "Add New Category"}</DialogTitle>
                     <DialogDescription>

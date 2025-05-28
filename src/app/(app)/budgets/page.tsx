@@ -1,5 +1,5 @@
 
-"use client"; // This layout needs to be a client component to use hooks
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { BudgetForm } from "@/components/budgets/budget-form";
@@ -146,6 +146,7 @@ export default function BudgetsPage() {
             userExchangeRates
         );
         // Only update if there's a meaningful change to prevent infinite loops
+        // Deep comparison might be too much here, check if a simpler condition works
         if (JSON.stringify(budgetsWithSpent) !== JSON.stringify(updatedBudgetsWithSpent)) {
             setBudgetsWithSpent(updatedBudgetsWithSpent);
         }
@@ -224,7 +225,7 @@ export default function BudgetsPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingBudget ? "Edit Budget" : "Set New Budget"}
               </Button>
             </DialogTrigger>
-             <DialogContent className="sm:max-w-[425px]">
+             <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{editingBudget ? "Edit Budget Goal" : "Set New Budget Goal"}</DialogTitle>
                     <DialogDescription>
@@ -242,7 +243,7 @@ export default function BudgetsPage() {
           </Dialog>
         </CardHeader>
         <CardContent>
-          {budgetsWithSpent.length === 0 && availableCategoriesForNewBudget.length === 0 && (
+          {budgetsWithSpent.length === 0 && availableCategoriesForNewBudget.length === 0 && !isLoading && (
             <p className="text-muted-foreground text-center py-4">All categories have budgets set. Add more categories to create new budgets.</p>
           )}
            {budgetsWithSpent.length === 0 && availableCategoriesForNewBudget.length > 0 && !isLoading && (

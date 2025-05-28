@@ -1,5 +1,5 @@
 
-"use client"; // This layout needs to be a client component to use hooks
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -140,7 +140,7 @@ export default function YearlyExpensesOverviewPage() {
         setIsFormOpen(isOpen);
         if (!isOpen) setEditingExpense(undefined);
       }}>
-        <DialogContent className="sm:max-w-[525px]">
+        <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Expense</DialogTitle>
             <DialogDescription>
