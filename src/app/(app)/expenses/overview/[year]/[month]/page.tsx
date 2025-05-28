@@ -1,12 +1,11 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ExpenseList } from "@/components/expenses/expense-list";
 import type { Expense, PaymentMethod, Category, Currency } from "@/lib/types";
-import { initialCategoriesData, initialExpensesData, initialPaymentMethodsData, initialCurrenciesData } from "@/lib/mock-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,12 @@ import {
 } from "@/components/ui/dialog";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 import { getMonth, getYear, getISOWeek, startOfWeek, endOfWeek, format, isValid } from 'date-fns';
+import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc } from "@/lib/services/expense-service";
+import { getCategoriesCol } from "@/lib/services/category-service";
+import { getPaymentMethodsCol } from "@/lib/services/payment-method-service";
+import { getCurrenciesCol } from "@/lib/services/currency-service";
 
 interface ExpensesByWeek {
   [weekKey: string]: { 
@@ -62,57 +66,66 @@ const groupExpensesByWeek = (expensesForMonth: Expense[], targetYear: number, ta
 
 
 export default function MonthlyExpensesOverviewPage() {
+  const { user } = useAuth();
   const params = useParams();
   const router = useRouter();
   const year = parseInt(params.year as string);
   const month = parseInt(params.month as string) - 1; 
 
   const [monthlyExpenses, setMonthlyExpenses] = useState<Expense[]>([]);
-  const [allPaymentMethods, setAllPaymentMethodsState] = useState<PaymentMethod[]>([]); // Renamed
-  const [allCategories, setAllCategoriesState] = useState<Category[]>([]); // Renamed
-  const [allCurrencies, setAllCurrenciesState] = useState<Currency[]>([]); // Renamed
+  const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [userCategories, setUserCategories] = useState<Category[]>([]);
+  const [userCurrencies, setUserCurrencies] = useState<Currency[]>([]);
   const [activeTab, setActiveTab] = useState("monthly");
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const { toast } = useToast();
 
-  const loadMonthlyExpenses = React.useCallback(() => {
-    if (isNaN(year) || isNaN(month) || month < 0 || month > 11) {
-      console.error("Invalid year or month params");
+  const fetchPageData = useCallback(async () => {
+    if (!user || isNaN(year) || isNaN(month) || month < 0 || month > 11) {
+      setIsLoading(false);
       setMonthlyExpenses([]);
+      console.error("Invalid user, year, or month params for monthly overview.");
       return;
     }
-    const filtered = initialExpensesData.filter(exp => 
-      isValid(new Date(exp.date)) &&
-      getYear(new Date(exp.date)) === year &&
-      getMonth(new Date(exp.date)) === month
-    ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    setMonthlyExpenses(filtered);
-  }, [year, month, initialExpensesData]); // Added initialExpensesData dependency
+    setIsLoading(true);
+    try {
+      const [
+        allUserExpenses, 
+        fetchedUserCategories, 
+        fetchedUserPaymentMethods, 
+        fetchedUserCurrencies
+      ] = await Promise.all([
+        getExpensesCol(user.uid),
+        getCategoriesCol(user.uid),
+        getPaymentMethodsCol(user.uid),
+        getCurrenciesCol(user.uid),
+      ]);
 
-  const refreshAllPaymentMethods = React.useCallback(() => setAllPaymentMethodsState([...initialPaymentMethodsData]), [initialPaymentMethodsData]);
-  const refreshAllCategories = React.useCallback(() => setAllCategoriesState([...initialCategoriesData]), [initialCategoriesData]);
-  const refreshAllCurrencies = React.useCallback(() => setAllCurrenciesState([...initialCurrenciesData]), [initialCurrenciesData]);
+      setUserCategories(fetchedUserCategories);
+      setUserPaymentMethods(fetchedUserPaymentMethods);
+      setUserCurrencies(fetchedUserCurrencies);
+
+      const filtered = allUserExpenses.filter(exp => 
+        isValid(new Date(exp.date)) &&
+        getYear(new Date(exp.date)) === year &&
+        getMonth(new Date(exp.date)) === month
+      ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setMonthlyExpenses(filtered);
+
+    } catch (error) {
+        console.error("Error fetching monthly overview data:", error);
+        toast({title: "Error", description: "Could not load data for this month.", variant: "destructive"});
+    } finally {
+        setIsLoading(false);
+    }
+  }, [user, year, month, toast]);
 
   useEffect(() => {
-    loadMonthlyExpenses();
-    refreshAllPaymentMethods();
-    refreshAllCategories();
-    refreshAllCurrencies();
-  }, [
-      year, 
-      month, 
-      loadMonthlyExpenses,
-      refreshAllPaymentMethods,
-      refreshAllCategories,
-      refreshAllCurrencies,
-      // Global arrays as direct dependencies
-      initialExpensesData, 
-      initialPaymentMethodsData, 
-      initialCategoriesData, 
-      initialCurrenciesData
-    ]);
+    fetchPageData();
+  }, [fetchPageData]);
 
   const weeklyGroupedExpenses = useMemo(() => {
     if (activeTab === 'weekly') {
@@ -129,20 +142,22 @@ export default function MonthlyExpensesOverviewPage() {
     setIsFormOpen(true);
   };
 
-  const handleUpdateExpense = (data: Omit<Expense, "id">) => {
-    if (!editingExpense) return;
-    const indexInGlobal = initialExpensesData.findIndex(exp => exp.id === editingExpense.id);
-    if (indexInGlobal !== -1) {
-      initialExpensesData[indexInGlobal] = { ...initialExpensesData[indexInGlobal], ...data };
+  const handleUpdateExpense = async (data: Omit<Expense, "id">) => {
+    if (!user || !editingExpense) return;
+    try {
+      await updateFirestoreExpenseDoc(user.uid, editingExpense.id, data);
+      toast({ title: "Expense Updated", description: `"${data.description}" has been updated.` });
+      fetchPageData(); // Re-fetch all data
+      setEditingExpense(undefined);
+      setIsFormOpen(false);
+    } catch (error: any) {
+        toast({title: "Error", description: error.message || "Could not update expense.", variant: "destructive"});
     }
-    loadMonthlyExpenses(); // Refresh the list on this page
-    setEditingExpense(undefined);
-    setIsFormOpen(false);
-    toast({
-      title: "Expense Updated",
-      description: `"${data.description}" has been updated.`,
-    });
   };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><p>Loading monthly expenses...</p></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -166,11 +181,14 @@ export default function MonthlyExpensesOverviewPage() {
             <TabsContent value="monthly">
               <ExpenseList 
                 expenses={monthlyExpenses} 
-                categories={allCategories} 
-                paymentMethods={allPaymentMethods}
-                currencies={allCurrencies} 
+                categories={userCategories} 
+                paymentMethods={userPaymentMethods}
+                currencies={userCurrencies} 
                 onEdit={handleEdit} 
-                onDelete={() => {}} 
+                onDelete={(expenseId) => { /* Deletion logic */
+                     console.log("Delete requested for: ", expenseId);
+                     toast({title: "Info", description: "Deletion from this view not fully implemented."});
+                }}  
                 sourcePageIdentifier="overview"
               />
             </TabsContent>
@@ -181,21 +199,24 @@ export default function MonthlyExpensesOverviewPage() {
                     <h3 className="text-lg font-semibold mb-2 text-primary">{weekData.weekLabel}</h3>
                     <ExpenseList 
                       expenses={weekData.expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())} 
-                      categories={allCategories} 
-                      paymentMethods={allPaymentMethods}
-                      currencies={allCurrencies} 
+                      categories={userCategories} 
+                      paymentMethods={userPaymentMethods}
+                      currencies={userCurrencies} 
                       onEdit={handleEdit} 
-                      onDelete={() => {}} 
+                      onDelete={(expenseId) => { /* Deletion logic */ 
+                        console.log("Delete requested for: ", expenseId);
+                        toast({title: "Info", description: "Deletion from this view not fully implemented."});
+                      }} 
                       sourcePageIdentifier="overview"
                     />
                   </div>
                 ))
               ) : (
-                 activeTab === 'weekly' && <p className="text-muted-foreground text-center py-4">No expenses to display for this view.</p>
+                 activeTab === 'weekly' && !isLoading && <p className="text-muted-foreground text-center py-4">No expenses to display for this view.</p>
               )}
             </TabsContent>
           </Tabs>
-           {monthlyExpenses.length === 0 && activeTab === 'monthly' && (
+           {monthlyExpenses.length === 0 && activeTab === 'monthly' && !isLoading && (
              <p className="text-muted-foreground text-center py-4">No expenses recorded for this month.</p>
            )}
         </CardContent>
@@ -214,9 +235,9 @@ export default function MonthlyExpensesOverviewPage() {
           </DialogHeader>
           {editingExpense && (
             <ExpenseForm
-              categories={allCategories}
-              paymentMethods={allPaymentMethods}
-              currencies={allCurrencies}
+              categories={userCategories}
+              paymentMethods={userPaymentMethods}
+              currencies={userCurrencies}
               onSubmit={handleUpdateExpense}
               initialData={editingExpense}
             />
@@ -226,5 +247,3 @@ export default function MonthlyExpensesOverviewPage() {
     </div>
   );
 }
-
-    

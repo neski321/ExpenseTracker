@@ -1,10 +1,9 @@
 
-"use client";
+"use client"; // This layout needs to be a client component to use hooks
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { ExpenseList } from "@/components/expenses/expense-list";
 import type { Expense, Category, PaymentMethod, Currency } from "@/lib/types";
-import { initialCategoriesData, initialExpensesData, initialPaymentMethodsData, initialCurrenciesData } from "@/lib/mock-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExpenseFilters, type ExpenseFilterValues } from "@/components/expenses/expense-filters";
 import { Search as SearchIcon } from "lucide-react"; 
@@ -17,13 +16,20 @@ import {
 } from "@/components/ui/dialog";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 import { getAllDescendantCategoryIds } from "@/lib/category-utils"; 
+import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc } from "@/lib/services/expense-service";
+import { getCategoriesCol } from "@/lib/services/category-service";
+import { getPaymentMethodsCol } from "@/lib/services/payment-method-service";
+import { getCurrenciesCol } from "@/lib/services/currency-service";
 
 export default function SearchExpensesPage() {
-  const [allExpenses, setAllExpenses] = useState<Expense[]>([]); 
-  const [categories, setCategoriesState] = useState<Category[]>([]); // Renamed
-  const [paymentMethods, setPaymentMethodsState] = useState<PaymentMethod[]>([]); // Renamed
-  const [currencies, setCurrenciesState] = useState<Currency[]>([]); // Renamed
+  const { user } = useAuth();
+  const [allUserExpenses, setAllUserExpenses] = useState<Expense[]>([]); 
+  const [userCategories, setUserCategories] = useState<Category[]>([]); 
+  const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>([]); 
+  const [userCurrencies, setUserCurrencies] = useState<Currency[]>([]); 
+  const [isLoading, setIsLoading] = useState(true);
   
   const [activeFilters, setActiveFilters] = useState<ExpenseFilterValues>({});
 
@@ -31,36 +37,46 @@ export default function SearchExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const { toast } = useToast();
 
-  const refreshAllExpensesState = React.useCallback(() => {
-    setAllExpenses([...initialExpensesData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  }, [initialExpensesData]);
-
-  const refreshCategoriesState = React.useCallback(() => setCategoriesState([...initialCategoriesData]), [initialCategoriesData]);
-  const refreshPaymentMethodsState = React.useCallback(() => setPaymentMethodsState([...initialPaymentMethodsData]), [initialPaymentMethodsData]);
-  const refreshCurrenciesState = React.useCallback(() => setCurrenciesState([...initialCurrenciesData]), [initialCurrenciesData]);
+  const fetchPageData = useCallback(async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const [
+        fetchedExpenses, 
+        fetchedCategories, 
+        fetchedPaymentMethods, 
+        fetchedCurrencies
+      ] = await Promise.all([
+        getExpensesCol(user.uid),
+        getCategoriesCol(user.uid),
+        getPaymentMethodsCol(user.uid),
+        getCurrenciesCol(user.uid)
+      ]);
+      setAllUserExpenses(fetchedExpenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setUserCategories(fetchedCategories);
+      setUserPaymentMethods(fetchedPaymentMethods);
+      setUserCurrencies(fetchedCurrencies);
+    } catch (error) {
+        console.error("Error fetching search page data:", error);
+        toast({title: "Error", description: "Could not load data for search.", variant: "destructive"});
+    } finally {
+        setIsLoading(false);
+    }
+  }, [user, toast]);
 
   useEffect(() => {
-    refreshAllExpensesState();
-    refreshCategoriesState();
-    refreshPaymentMethodsState();
-    refreshCurrenciesState();
-  }, [
-      refreshAllExpensesState, 
-      refreshCategoriesState,
-      refreshPaymentMethodsState,
-      refreshCurrenciesState,
-      // Global arrays as direct dependencies
-      initialExpensesData, 
-      initialCategoriesData, 
-      initialPaymentMethodsData, 
-      initialCurrenciesData
-    ]);
+    fetchPageData();
+  }, [fetchPageData]);
+
 
   const filteredExpenses = useMemo(() => {
-    let currentlyFilteredExpenses = [...allExpenses]; 
+    let currentlyFilteredExpenses = [...allUserExpenses]; 
 
     if (Object.keys(activeFilters).length > 0) {
-        currentlyFilteredExpenses = allExpenses.filter(expense => {
+        currentlyFilteredExpenses = allUserExpenses.filter(expense => {
         let match = true;
 
         if (activeFilters.dateRange?.from) {
@@ -75,7 +91,7 @@ export default function SearchExpensesPage() {
         if (match && activeFilters.subCategoryId) {
             if (expense.categoryId !== activeFilters.subCategoryId) match = false;
         } else if (match && activeFilters.mainCategoryId) {
-            const descendantIds = getAllDescendantCategoryIds(activeFilters.mainCategoryId, categories);
+            const descendantIds = getAllDescendantCategoryIds(activeFilters.mainCategoryId, userCategories);
             const categoryIdsToMatch = [activeFilters.mainCategoryId, ...descendantIds];
             if (!categoryIdsToMatch.includes(expense.categoryId)) match = false;
         }
@@ -97,7 +113,7 @@ export default function SearchExpensesPage() {
     }
     return currentlyFilteredExpenses;
 
-  }, [allExpenses, activeFilters, categories]);
+  }, [allUserExpenses, activeFilters, userCategories]);
 
   const handleApplyFilters = (filters: ExpenseFilterValues) => {
     setActiveFilters(filters);
@@ -108,21 +124,22 @@ export default function SearchExpensesPage() {
     setIsFormOpen(true);
   };
 
-  const handleUpdateExpense = (data: Omit<Expense, "id">) => {
-    if (!editingExpense) return;
-    const indexInGlobal = initialExpensesData.findIndex(exp => exp.id === editingExpense.id);
-    if (indexInGlobal !== -1) {
-      initialExpensesData[indexInGlobal] = { ...initialExpensesData[indexInGlobal], ...data };
+  const handleUpdateExpense = async (data: Omit<Expense, "id">) => {
+    if (!user || !editingExpense) return;
+    try {
+      await updateFirestoreExpenseDoc(user.uid, editingExpense.id, data);
+      toast({ title: "Expense Updated", description: `"${data.description}" has been updated.` });
+      fetchPageData(); // Re-fetch all data to reflect changes in the list
+      setEditingExpense(undefined);
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({title: "Error", description: error.message || "Could not update expense.", variant: "destructive"});
     }
-    refreshAllExpensesState(); // Refresh the list on this page
-    setEditingExpense(undefined);
-    setIsFormOpen(false);
-    toast({
-      title: "Expense Updated",
-      description: `"${data.description}" has been updated.`,
-    });
   };
 
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><p>Loading search & filter...</p></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -136,8 +153,8 @@ export default function SearchExpensesPage() {
         </CardHeader>
         <CardContent>
           <ExpenseFilters 
-            categories={categories}
-            paymentMethods={paymentMethods}
+            categories={userCategories}
+            paymentMethods={userPaymentMethods}
             onApplyFilters={handleApplyFilters}
             initialFilters={activeFilters}
           />
@@ -148,17 +165,20 @@ export default function SearchExpensesPage() {
         <CardHeader>
           <CardTitle>Filtered Results</CardTitle>
           <CardDescription>
-            Showing {filteredExpenses.length} of {allExpenses.length} expenses.
+            Showing {filteredExpenses.length} of {allUserExpenses.length} expenses.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ExpenseList 
             expenses={filteredExpenses} 
-            categories={categories} 
-            paymentMethods={paymentMethods}
-            currencies={currencies}
+            categories={userCategories} 
+            paymentMethods={userPaymentMethods}
+            currencies={userCurrencies}
             onEdit={handleEdit} 
-            onDelete={() => {}} 
+            onDelete={(expenseId) => { /* Deletion logic */
+                 console.log("Delete requested for: ", expenseId);
+                 toast({title: "Info", description: "Deletion from this view not fully implemented."});
+            }} 
             sourcePageIdentifier="search"
           />
         </CardContent>
@@ -177,9 +197,9 @@ export default function SearchExpensesPage() {
           </DialogHeader>
           {editingExpense && (
             <ExpenseForm
-              categories={categories}
-              paymentMethods={paymentMethods}
-              currencies={currencies}
+              categories={userCategories}
+              paymentMethods={userPaymentMethods}
+              currencies={userCurrencies}
               onSubmit={handleUpdateExpense}
               initialData={editingExpense}
             />
@@ -189,5 +209,3 @@ export default function SearchExpensesPage() {
     </div>
   );
 }
-
-    

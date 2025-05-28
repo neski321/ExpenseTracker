@@ -1,7 +1,7 @@
 
-"use client";
+"use client"; // This layout needs to be a client component to use hooks
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { IncomeSourceForm } from "@/components/income-sources/income-source-form";
 import { IncomeSourceList } from "@/components/income-sources/income-source-list";
 import type { IncomeSource } from "@/lib/types";
@@ -17,46 +17,68 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { initialIncomeSourcesData, initialIncomesData } from "@/lib/mock-data"; // Added initialIncomesData
+import { useAuth } from "@/contexts/auth-context";
+import {
+  addIncomeSourceDoc,
+  getIncomeSourcesCol,
+  updateIncomeSourceDoc,
+  deleteIncomeSourceDoc,
+} from "@/lib/services/income-source-service";
 
 export default function IncomeSourcesPage() {
+  const { user } = useAuth();
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingIncomeSource, setEditingIncomeSource] = useState<IncomeSource | undefined>(undefined);
   const { toast } = useToast();
 
-  const refreshIncomeSourcesState = React.useCallback(() => {
-    setIncomeSources([...initialIncomeSourcesData]);
-  }, [initialIncomeSourcesData]);
+  const fetchIncomeSources = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const userIncomeSources = await getIncomeSourcesCol(user.uid);
+      setIncomeSources(userIncomeSources);
+    } catch (error) {
+      console.error("Failed to fetch income sources:", error);
+      toast({ title: "Error", description: "Could not load income sources.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, toast]);
 
   useEffect(() => {
-    refreshIncomeSourcesState();
-  }, [refreshIncomeSourcesState, initialIncomeSourcesData]); // Ensure initialIncomeSourcesData is a dependency
+    fetchIncomeSources();
+  }, [fetchIncomeSources]);
 
-  const handleAddIncomeSource = (data: Omit<IncomeSource, "id" | "iconName">) => {
-    const newIncomeSource = { 
-        ...data, 
-        id: `is${Date.now()}`, // Use Date.now() for better uniqueness
-        iconName: undefined, 
-    };
-    initialIncomeSourcesData.push(newIncomeSource);
-    refreshIncomeSourcesState();
-    setIsFormOpen(false);
+  const handleAddIncomeSource = async (data: Omit<IncomeSource, "id" | "iconName">) => {
+    if (!user) return;
+    const incomeSourceData: Omit<IncomeSource, "id"> = { ...data, iconName: undefined }; // Form doesn't handle icons yet
+    try {
+      await addIncomeSourceDoc(user.uid, incomeSourceData);
+      toast({ title: "Income Source Added!", description: `Source "${data.name}" has been successfully added.` });
+      fetchIncomeSources();
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error adding source", description: error.message || "Could not add income source.", variant: "destructive" });
+    }
   };
 
-  const handleUpdateIncomeSource = (data: Omit<IncomeSource, "id" | "iconName">) => {
-    if (!editingIncomeSource) return;
-    const indexInGlobal = initialIncomeSourcesData.findIndex(is => is.id === editingIncomeSource.id);
-    if (indexInGlobal !== -1) {
-      initialIncomeSourcesData[indexInGlobal] = { 
-        ...initialIncomeSourcesData[indexInGlobal], 
-        name: data.name 
-        // iconName will be preserved from original if not editable in form
-      };
+  const handleUpdateIncomeSource = async (data: Omit<IncomeSource, "id" | "iconName">) => {
+    if (!user || !editingIncomeSource) return;
+    const updateData: Partial<Omit<IncomeSource, "id">> = { 
+        name: data.name, 
+        iconName: editingIncomeSource.iconName // Preserve existing icon
+    };
+    try {
+      await updateIncomeSourceDoc(user.uid, editingIncomeSource.id, updateData);
+      toast({ title: "Income Source Updated!", description: `Source "${data.name}" has been successfully updated.` });
+      fetchIncomeSources();
+      setEditingIncomeSource(undefined);
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error updating source", description: error.message || "Could not update income source.", variant: "destructive" });
     }
-    refreshIncomeSourcesState();
-    setEditingIncomeSource(undefined);
-    setIsFormOpen(false);
   };
 
   const handleEdit = (incomeSource: IncomeSource) => {
@@ -64,29 +86,25 @@ export default function IncomeSourcesPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (incomeSourceId: string) => {
-    const isUsedInIncomes = initialIncomesData.some(inc => inc.incomeSourceId === incomeSourceId);
-    if (isUsedInIncomes) {
+  const handleDelete = async (incomeSourceId: string) => {
+    if (!user) return;
+    try {
+      await deleteIncomeSourceDoc(user.uid, incomeSourceId);
+      toast({ title: "Income Source Deleted", description: "The income source has been removed.", variant: "destructive" });
+      fetchIncomeSources();
+    } catch (error: any) {
       toast({
-        title: "Cannot Delete Income Source",
-        description: "This income source is currently used by one or more income entries. Please reassign those entries first.",
+        title: "Cannot Delete Source",
+        description: error.message || "Could not delete income source.",
         variant: "destructive",
       });
-      return;
     }
-    
-    const indexInGlobal = initialIncomeSourcesData.findIndex(is => is.id === incomeSourceId);
-    if (indexInGlobal !== -1) {
-      initialIncomeSourcesData.splice(indexInGlobal, 1);
-    }
-    refreshIncomeSourcesState();
-    toast({
-      title: "Income Source Deleted",
-      description: "The income source has been removed successfully.",
-      variant: "destructive"
-    });
   };
   
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><p>Loading income sources...</p></div>;
+  }
+
   return (
     <div className="space-y-6">
       <Card className="shadow-xl">
@@ -132,5 +150,3 @@ export default function IncomeSourcesPage() {
     </div>
   );
 }
-
-    

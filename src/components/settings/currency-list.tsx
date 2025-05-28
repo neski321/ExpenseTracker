@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, Edit3 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BASE_CURRENCY_ID } from "@/lib/currency-utils";
+// import { BASE_CURRENCY_ID } from "@/lib/currency-utils"; // Already passed as prop
 
 interface CurrencyListProps {
   currencies: Currency[];
@@ -14,18 +14,20 @@ interface CurrencyListProps {
   onEditCurrency: (currency: Currency) => void;
   onDeleteCurrency: (currencyId: string) => void;
   onEditRate: (currency: Currency) => void;
+  baseCurrencyId: string;
 }
 
-export function CurrencyList({ currencies, exchangeRates, onEditCurrency, onDeleteCurrency, onEditRate }: CurrencyListProps) {
+export function CurrencyList({ currencies, exchangeRates, onEditCurrency, onDeleteCurrency, onEditRate, baseCurrencyId }: CurrencyListProps) {
 
   if (currencies.length === 0) {
     return <p className="text-muted-foreground text-center py-8">No currencies found. Add one to get started!</p>;
   }
 
-  const getExchangeRateDisplay = (currencyId: string): string => {
-    if (currencyId === BASE_CURRENCY_ID) return "Base Currency (1.00)";
-    const rate = exchangeRates.find(r => r.currencyId === currencyId);
-    return rate ? `1 ${currencies.find(c=>c.id === currencyId)?.code} = ${rate.rateToBase.toFixed(4)} ${currencies.find(c=>c.id === BASE_CURRENCY_ID)?.code}` : "Rate not set";
+  const getExchangeRateDisplay = (currency: Currency): string => {
+    const baseCurrency = currencies.find(c => c.id === baseCurrencyId);
+    if (currency.id === baseCurrencyId) return `Base Currency (1.00 ${baseCurrency?.code || 'BASE'})`;
+    const rate = exchangeRates.find(r => r.currencyId === currency.id);
+    return rate ? `1 ${currency.code} = ${rate.rateToBase.toFixed(4)} ${baseCurrency?.code || 'BASE'}` : "Rate not set";
   };
 
   return (
@@ -38,21 +40,21 @@ export function CurrencyList({ currencies, exchangeRates, onEditCurrency, onDele
                     <span className="text-2xl font-semibold">{currency.symbol}</span>
                     <div>
                         <span className="font-medium text-lg">{currency.name} ({currency.code})</span>
-                        {currency.id === BASE_CURRENCY_ID && <Badge variant="secondary" className="ml-2">Base</Badge>}
+                        {currency.id === baseCurrencyId && <Badge variant="secondary" className="ml-2">Base</Badge>}
                     </div>
                 </div>
-                <span className="text-xs text-muted-foreground mt-1">{getExchangeRateDisplay(currency.id)}</span>
+                <span className="text-xs text-muted-foreground mt-1">{getExchangeRateDisplay(currency)}</span>
             </div>
             <div className="space-x-1">
               <Button variant="ghost" size="icon" onClick={() => onEditCurrency(currency)} aria-label={`Edit currency ${currency.name}`}>
                 <Pencil className="h-4 w-4" />
               </Button>
-              {currency.id !== BASE_CURRENCY_ID && (
+              {currency.id !== baseCurrencyId && (
                  <Button variant="ghost" size="icon" onClick={() => onEditRate(currency)} aria-label={`Edit exchange rate for ${currency.name}`}>
                     <Edit3 className="h-4 w-4" />
                  </Button>
               )}
-              {currency.id !== BASE_CURRENCY_ID && currencies.length > 1 && (
+              {currency.id !== baseCurrencyId && currencies.length > 1 && (
                 <Button 
                   variant="ghost" 
                   size="icon" 
