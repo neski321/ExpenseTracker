@@ -39,7 +39,7 @@ import {
 import { convertToBaseCurrency, BASE_CURRENCY_ID, getCurrencySymbol } from "@/lib/currency-utils";
 import { cn } from "@/lib/utils";
 import { getAllDescendantCategoryIds, getCategoryPath, type CategoryPathPart } from "@/lib/category-utils";
-import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc } from "@/lib/services/expense-service";
+import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc, deleteExpenseDoc as deleteFirestoreExpenseDoc } from "@/lib/services/expense-service";
 import { getCategoriesCol } from "@/lib/services/category-service";
 import { getPaymentMethodsCol } from "@/lib/services/payment-method-service";
 import { getCurrenciesCol } from "@/lib/services/currency-service";
@@ -64,6 +64,7 @@ export default function CategoryExpensesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoryIdFromUrl = params.categoryId as string;
+  const fromQueryParam = searchParams.get("from");
 
   const [allExpensesForCategoryAndDescendants, setAllExpensesForCategoryAndDescendants] = useState<Expense[]>([]);
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([]);
@@ -81,13 +82,30 @@ export default function CategoryExpensesPage() {
   const [comparisonTextColor, setComparisonTextColor] = useState<string>("text-muted-foreground");
 
   const [backButtonText, setBackButtonText] = useState("Back");
-  const [backButtonAction, setBackButtonAction] = useState(() => () => router.back());
-  const fromQueryParam = searchParams.get("from");
+  const [backButtonAction, setBackButtonAction] = useState<() => void>(() => () => {}); 
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
+
+  // Effect for setting back button text and action
+   useEffect(() => {
+    let newBackButtonText = "Back";
+    const navigateBack = () => {
+      if (fromQueryParam === "dashboard") { newBackButtonText = "Back to Dashboard"; router.push("/dashboard");}
+      else if (fromQueryParam === "budgets") { newBackButtonText = "Back to Budgets"; router.push("/budgets");}
+      else if (fromQueryParam === "expenses") { newBackButtonText = "Back to Expenses"; router.push("/expenses");}
+      else if (fromQueryParam === "search") { newBackButtonText = "Back to Search Results"; router.push("/expenses/search");}
+      else if (fromQueryParam === "categories") { newBackButtonText = "Back to Categories"; router.push("/categories");}
+      else if (fromQueryParam === "overview") { newBackButtonText = "Back to Overview"; router.back(); } // Overview can be multiple pages
+      else if (fromQueryParam === "payment-method") { newBackButtonText = "Back to Payment Method View"; router.back(); }
+      else { router.back(); }
+    };
+    setBackButtonText(newBackButtonText);
+    setBackButtonAction(() => navigateBack);
+  }, [fromQueryParam, router]);
+
 
   const fetchPageData = useCallback(async () => {
     if (!user || !categoryIdFromUrl) {
@@ -129,36 +147,21 @@ export default function CategoryExpensesPage() {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setAllExpensesForCategoryAndDescendants(expensesForCategory);
 
-      // Set up back button context
-      if (fromQueryParam === "dashboard") setBackButtonText("Back to Dashboard");
-      else if (fromQueryParam === "budgets") setBackButtonText("Back to Budgets");
-      else if (fromQueryParam === "expenses") setBackButtonText("Back to Expenses");
-      else if (fromQueryParam === "search") setBackButtonText("Back to Search Results");
-      else if (fromQueryParam === "categories") setBackButtonText("Back to Categories");
-      else if (fromQueryParam === "overview") setBackButtonText("Back to Overview");
-      else if (fromQueryParam === "payment-method") setBackButtonText("Back to Payment Method View");
-      else setBackButtonText("Back");
-
-      setBackButtonAction(() => () => {
-        if (fromQueryParam === "dashboard") router.push("/dashboard");
-        else if (fromQueryParam === "budgets") router.push("/budgets");
-        else if (fromQueryParam === "expenses") router.push("/expenses");
-        else if (fromQueryParam === "search") router.push("/expenses/search");
-        else if (fromQueryParam === "categories") router.push("/categories");
-        else router.back();
-      });
-
     } catch (error) {
         console.error("Error fetching category expenses data:", error);
         toast({title: "Error", description: "Could not load data for this category.", variant: "destructive"});
     } finally {
         setIsLoading(false);
     }
-  }, [user, categoryIdFromUrl, fromQueryParam, router, toast]);
+  }, [user, categoryIdFromUrl, toast]); 
 
   useEffect(() => {
-    fetchPageData();
-  }, [fetchPageData]);
+    if(user && categoryIdFromUrl){
+      fetchPageData();
+    } else {
+      setIsLoading(false);
+    }
+  }, [fetchPageData, user, categoryIdFromUrl]);
 
 
   useEffect(() => {
@@ -186,14 +189,14 @@ export default function CategoryExpensesPage() {
       previousPeriodEnd = endOfYear(subYears(now, 1));
     }
     
-    if(currentPeriodStart && currentPeriodEnd) { // Filter only if a period is chosen other than 'all'
+    if(currentPeriodStart && currentPeriodEnd) { 
         newFilteredExpenses = allExpensesForCategoryAndDescendants.filter(exp =>
             isValid(new Date(exp.date)) && isWithinInterval(new Date(exp.date), { start: currentPeriodStart!, end: currentPeriodEnd! })
         );
     }
     setFilteredExpenses(newFilteredExpenses);
 
-    if (activeTab === "all" || !currentPeriodStart || !currentPeriodEnd || !previousPeriodStart || !previousPeriodEnd || userExchangeRates.length === 0 || userCategories.length === 0) {
+    if (activeTab === "all" || !currentPeriodStart || !currentPeriodEnd || !previousPeriodStart || !previousPeriodEnd || userExchangeRates.length === 0) {
       setComparisonText(null);
       return;
     }
@@ -236,7 +239,7 @@ export default function CategoryExpensesPage() {
     setComparisonText(message);
     setComparisonTextColor(textColor);
 
-  }, [allExpensesForCategoryAndDescendants, activeTab, userExchangeRates, baseCurrencySymbol, userCategories]);
+  }, [allExpensesForCategoryAndDescendants, activeTab, userExchangeRates, baseCurrencySymbol]);
 
   const handleEdit = (expense: Expense) => {
     setEditingExpense(expense);
@@ -248,13 +251,25 @@ export default function CategoryExpensesPage() {
     try {
       await updateFirestoreExpenseDoc(user.uid, editingExpense.id, data);
       toast({ title: "Expense Updated", description: `"${data.description}" has been updated.` });
-      fetchPageData(); // Re-fetch all data to reflect changes
+      fetchPageData(); 
       setEditingExpense(undefined);
       setIsFormOpen(false);
     } catch (error: any) {
         toast({title: "Error", description: error.message || "Could not update expense.", variant: "destructive"});
     }
   };
+  
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!user) return;
+    try {
+      await deleteFirestoreExpenseDoc(user.uid, expenseId);
+      toast({ title: "Expense Deleted", description: "The expense has been removed.", variant: "destructive" });
+      fetchPageData(); 
+    } catch (error: any) {
+      toast({ title: "Error Deleting Expense", description: error.message || "Could not delete expense.", variant: "destructive" });
+    }
+  };
+
 
   const getTabDescription = () => {
     const now = new Date();
@@ -317,7 +332,7 @@ export default function CategoryExpensesPage() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FilterPeriod)} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4">
+            <TabsList className="grid w-full h-auto grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-4 mb-4">
               <TabsTrigger value="all">All Time</TabsTrigger>
               <TabsTrigger value="year">This Year</TabsTrigger>
               <TabsTrigger value="month">This Month</TabsTrigger>
@@ -332,10 +347,7 @@ export default function CategoryExpensesPage() {
                   paymentMethods={userPaymentMethods}
                   currencies={userCurrencies}
                   onEdit={handleEdit} 
-                  onDelete={(expenseId) => { /* Deletion here might be complex if it affects other views/calculations immediately */ 
-                     console.log("Delete requested for: ", expenseId);
-                     toast({title: "Info", description: "Deletion from this view not fully implemented."});
-                  }} 
+                  onDelete={handleDeleteExpense} 
                   sourcePageIdentifier="category" 
                 />
               </TabsContent>
@@ -372,3 +384,4 @@ export default function CategoryExpensesPage() {
     </div>
   );
 }
+    

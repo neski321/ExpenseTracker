@@ -1,4 +1,4 @@
-# **App Name**: PennyPincher
+# **App Name**: PennyPincher by Neski
 
 ## Core Features:
 

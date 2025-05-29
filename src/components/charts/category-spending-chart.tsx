@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { useRouter } from "next/navigation";
 import type { Category, Expense, Currency, ExchangeRate } from "@/lib/types";
-import { convertToBaseCurrency, BASE_CURRENCY_ID } from "@/lib/currency-utils";
+import { convertToBaseCurrency } from "@/lib/currency-utils";
 import { getAllDescendantCategoryIds } from "@/lib/category-utils";
 
 interface CategorySpendingChartProps {
@@ -17,15 +17,20 @@ interface CategorySpendingChartProps {
   exchangeRates: ExchangeRate[];
 }
 
-// Predefined colors from globals.css (ensure these match or are sufficient)
+// Extended predefined colors from globals.css
 const CHART_COLORS = [
   "hsl(var(--chart-1))",
   "hsl(var(--chart-2))",
   "hsl(var(--chart-3))",
   "hsl(var(--chart-4))",
   "hsl(var(--chart-5))",
-  "hsl(var(--primary))", // Fallback if more categories than chart colors
-  "hsl(var(--accent))",
+  "hsl(var(--chart-6))",
+  "hsl(var(--chart-7))",
+  "hsl(var(--chart-8))",
+  "hsl(var(--chart-9))",
+  "hsl(var(--chart-10))",
+  "hsl(var(--chart-11))",
+  "hsl(var(--chart-12))",
 ];
 
 export function CategorySpendingChart({
@@ -39,7 +44,7 @@ export function CategorySpendingChart({
   const [dynamicChartConfig, setDynamicChartConfig] = useState<ChartConfig>({});
 
   useEffect(() => {
-    if (!categories.length || !expenses.length || !currencies.length || !exchangeRates.length) {
+    if (!categories.length || !currencies.length || !exchangeRates.length) { // Expenses can be empty
       setChartData([]);
       setDynamicChartConfig({});
       return;
@@ -65,7 +70,7 @@ export function CategorySpendingChart({
         newChartData.push({
           name: parentCat.name,
           categoryId: parentCat.id,
-          value: parseFloat(totalSpentInBase.toFixed(2)), // Ensure it's a number for the chart
+          value: parseFloat(totalSpentInBase.toFixed(2)), 
           fill: color,
         });
         newConfig[parentCat.name] = { label: parentCat.name, color: color };
@@ -73,10 +78,7 @@ export function CategorySpendingChart({
       }
     });
     
-    // Sort by value descending and take top N if desired, e.g. top 5 + "Other"
-    // For now, showing all parent categories with spending.
     newChartData.sort((a, b) => b.value - a.value);
-
 
     setChartData(newChartData);
     setDynamicChartConfig(newConfig);
@@ -121,7 +123,7 @@ export function CategorySpendingChart({
                       payload.map((entry, index) => (
                         <li key={`item-${index}`} className="flex items-center gap-1.5">
                           <span className="h-2.5 w-2.5 rounded-full" style={{backgroundColor: entry.color}} />
-                          {entry.value} {/* This is the category name from the payload */}
+                          {entry.value}
                         </li>
                       ))
                     }
@@ -141,9 +143,9 @@ export function CategorySpendingChart({
                     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
                     const x = cx + radius * Math.cos(-midAngle * RADIAN);
                     const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                    if (percent * 100 < 5) return null; // Don't show label for very small slices
+                    if (percent * 100 < 5) return null; 
                     return (
-                      <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10px">
+                      <text x={x} y={y} fill="hsl(var(--card-foreground))" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10px" fontWeight="medium">
                         {`${(percent * 100).toFixed(0)}%`}
                       </text>
                     );
