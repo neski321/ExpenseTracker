@@ -4,7 +4,10 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail as firebaseSendPasswordResetEmail, // Renamed for clarity
+  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
+  updateEmail as firebaseUpdateEmail, // Added
+  EmailAuthProvider, // Added
+  reauthenticateWithCredential, // Added
   type UserCredential,
   type User
 } from "firebase/auth";
@@ -57,7 +60,10 @@ export const sendPasswordReset = async (email: string): Promise<void> => {
     console.error("Firebase password reset error:", error);
     const firebaseError = error as FirebaseError;
     if (firebaseError.code === 'auth/user-not-found') {
-      throw new Error('No user found with this email address.');
+      // Avoid confirming if an email exists for security reasons by returning successfully.
+      // The user will only get an email if the account exists.
+      console.info("Password reset attempted for non-existent user or other issue, but acting as success for UI.");
+      return;
     }
     throw new Error(firebaseError.message || "Could not send password reset email. Please try again.");
   }
@@ -70,5 +76,50 @@ export const signOutUser = async (): Promise<void> => {
     console.error("Firebase signout error:", error);
     const firebaseError = error as FirebaseError;
     throw new Error(firebaseError.message || "An unknown error occurred during sign out.");
+  }
+};
+
+export const reauthenticateUser = async (password: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user || !user.email) {
+    throw new Error("No user is currently signed in or user email is not available.");
+  }
+  const credential = EmailAuthProvider.credential(user.email, password);
+  try {
+    await reauthenticateWithCredential(user, credential);
+  } catch (error) {
+    const firebaseError = error as FirebaseError;
+    if (firebaseError.code === 'auth/wrong-password' || firebaseError.code === 'auth/invalid-credential') {
+      throw new Error('Incorrect password. Please try again.');
+    } else if (firebaseError.code === 'auth/user-mismatch') {
+       throw new Error('User credentials do not match the current user.');
+    } else if (firebaseError.code === 'auth/requires-recent-login') {
+        throw new Error('This operation is sensitive and requires recent authentication. Please sign out and sign back in to continue.');
+    }
+    console.error("Firebase reauthentication error:", firebaseError);
+    throw new Error(firebaseError.message || 'Failed to re-authenticate. Please try again.');
+  }
+};
+
+export const updateUserEmailFirebase = async (newEmail: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error("No user is currently signed in.");
+  }
+  try {
+    await firebaseUpdateEmail(user, newEmail);
+    // Firebase may send a verification email to the new address.
+    // You might want to inform the user about this.
+  } catch (error) {
+    const firebaseError = error as FirebaseError;
+    if (firebaseError.code === 'auth/requires-recent-login') {
+      throw new Error('This operation is sensitive and requires recent authentication. Please re-enter your password or sign out and sign back in.');
+    } else if (firebaseError.code === 'auth/email-already-in-use') {
+      throw new Error('This email address is already in use by another account.');
+    } else if (firebaseError.code === 'auth/invalid-email') {
+      throw new Error('The new email address is not valid.');
+    }
+    console.error("Firebase update email error:", firebaseError);
+    throw new Error(firebaseError.message || 'Failed to update email. Please try again.');
   }
 };

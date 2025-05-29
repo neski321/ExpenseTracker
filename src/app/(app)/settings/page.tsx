@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { CurrencyList } from "@/components/settings/currency-list";
 import { CurrencyForm } from "@/components/settings/currency-form";
 import { ExchangeRateForm } from "@/components/settings/exchange-rate-form";
+import { UpdateEmailForm } from "@/components/settings/update-email-form";
 import type { Currency, ExchangeRate } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { PlusCircle, Settings as SettingsIcon, Trash2, UserCog, Edit } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -31,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE_CURRENCY_ID } from "@/lib/currency-utils";
+import { BASE_CURRENCY_ID, getCurrencySymbol } from "@/lib/currency-utils";
 import {
   addCurrencyDoc,
   getCurrenciesCol,
@@ -41,7 +42,7 @@ import {
 import {
   getExchangeRatesCol,
   setExchangeRateDoc,
-  deleteExchangeRateDoc, // Assuming you might want to delete a rate if a currency is deleted
+  deleteExchangeRateDoc,
 } from "@/lib/services/exchange-rate-service";
 import { seedDefaultUserData } from "@/lib/services/user-service";
 import { db } from '@/lib/firebase';
@@ -80,6 +81,7 @@ export default function SettingsPage() {
   const [currencyForRateEdit, setCurrencyForRateEdit] = useState<Currency | undefined>(undefined);
   
   const [isLoading, setIsLoading] = useState(true);
+  const [showUpdateEmailForm, setShowUpdateEmailForm] = useState(false);
 
   // Dialog states for granular clearing
   const [isClearCategoriesDialogOpen, setIsClearCategoriesDialogOpen] = useState(false);
@@ -132,10 +134,12 @@ export default function SettingsPage() {
   const handleAddCurrency = async (data: Omit<Currency, "id">) => {
     if (!user) return;
     try {
-      // For user-added currencies, I let Firestore generate the ID.
-      const newCurrency = await addCurrencyDoc(user.uid, { ...data, id: `cur-user-${Date.now()}` }); // ensures an ID is passed for setDoc logic
+      const newCurrency = await addCurrencyDoc(user.uid, data ); 
       if (newCurrency.id !== BASE_CURRENCY_ID) {
-        await setExchangeRateDoc(user.uid, newCurrency.id, 1.0);
+        const existingRate = exchangeRates.find(er => er.currencyId === newCurrency.id);
+        if(!existingRate) {
+           await setExchangeRateDoc(user.uid, newCurrency.id, 1.0);
+        }
       }
       toast({ title: "Currency Added", description: `${data.name} (${data.code}) has been added.` });
       fetchSettingsData();
@@ -212,10 +216,6 @@ export default function SettingsPage() {
     try {
       await deleteAllDocsInUserCollection(user.uid, collectionName);
       if (reSeedDefaults) {
-        // Specifically re-seed only the default structural data.
-        // seedDefaultUserData handles seeding all default types (categories, payment methods, etc.)
-        // but does not seed transactional data (expenses, incomes) by design.
-        // If we are clearing e.g. budgetGoals, we want the original sample budgetGoals back.
         await seedDefaultUserData(user.uid); 
         toast({
           title: `${itemDisplayName} Cleared & Defaults Re-seeded!`,
@@ -229,7 +229,7 @@ export default function SettingsPage() {
           duration: 7000,
         });
       }
-      window.location.reload(); // Force full refresh to ensure all components refetch data
+      window.location.reload(); 
     } catch (error: any) {
       console.error(`Error clearing ${itemDisplayName.toLowerCase()}:`, error);
       toast({
@@ -244,11 +244,16 @@ export default function SettingsPage() {
   };
 
 
-  if (isLoading) {
+  if (isLoading && !user) { 
+    return <div className="flex justify-center items-center h-full"><p>Loading user data...</p></div>;
+  }
+  if (isLoading && user) { 
     return <div className="flex justify-center items-center h-full"><p>Loading settings...</p></div>;
   }
 
+
   const baseCurrency = currencies.find(c => c.id === BASE_CURRENCY_ID);
+  const baseCurrencySymbolToShow = getCurrencySymbol(BASE_CURRENCY_ID, currencies);
 
   return (
     <div className="space-y-6">
@@ -258,24 +263,50 @@ export default function SettingsPage() {
             <SettingsIcon className="mr-3 h-7 w-7 text-primary" />
             <div>
                 <CardTitle className="text-2xl">Settings</CardTitle>
-                <CardDescription>Manage application currencies and data.</CardDescription>
+                <CardDescription>Manage application currencies, account, and data.</CardDescription>
             </div>
           </div>
         </CardHeader>
       </Card>
 
       <Card className="shadow-xl">
+        <CardHeader>
+            <div className="flex items-center">
+                <UserCog className="mr-3 h-6 w-6 text-primary" />
+                <div>
+                    <CardTitle className="text-xl">Account Settings</CardTitle>
+                    <CardDescription>Manage your account details.</CardDescription>
+                </div>
+            </div>
+        </CardHeader>
+        <CardContent>
+            <div className="mb-4">
+                <h3 className="text-lg font-medium">Current Email</h3>
+                <p className="text-sm text-muted-foreground">{user?.email || "Not available"}</p>
+            </div>
+            {!showUpdateEmailForm && (
+              <Button onClick={() => setShowUpdateEmailForm(true)} className="w-full sm:w-auto shadow-md">
+                <Edit className="mr-2 h-4 w-4" /> Update Email Address
+              </Button>
+            )}
+            {showUpdateEmailForm && (
+              <UpdateEmailForm />
+            )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-xl">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-xl">Manage Currencies</CardTitle>
-            <CardDescription>Base currency: {baseCurrency ? `${baseCurrency.name} (${baseCurrency.code})` : "Loading..."}. Add or edit other currencies.</CardDescription>
+            <CardDescription>Base currency: {baseCurrency ? `${baseCurrency.name} (${baseCurrencySymbolToShow})` : "Loading..."}. Add or edit other currencies.</CardDescription>
           </div>
           <Dialog open={isCurrencyFormOpen} onOpenChange={(isOpen) => {
             setIsCurrencyFormOpen(isOpen);
             if (!isOpen) setEditingCurrency(undefined);
           }}>
             <DialogTrigger asChild>
-              <Button className="shadow-md" disabled={isLoading}>
+              <Button className="shadow-md" disabled={isLoading || !user}>
                 <PlusCircle className="mr-2 h-4 w-4" /> {editingCurrency ? "Edit Currency" : "Add New Currency"}
               </Button>
             </DialogTrigger>
@@ -298,8 +329,9 @@ export default function SettingsPage() {
             onDeleteCurrency={handleDeleteCurrency}
             onEditRate={handleOpenRateEdit}
             baseCurrencyId={BASE_CURRENCY_ID}
+            baseCurrencySymbol={baseCurrencySymbolToShow}
           />
-           {currencies.length === 0 && !isLoading && (
+           {currencies.length === 0 && !isLoading && user && (
             <p className="text-muted-foreground text-center py-4">No currencies found. Add one to get started or wait for defaults to load.</p>
           )}
         </CardContent>
@@ -313,7 +345,7 @@ export default function SettingsPage() {
             <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Set Exchange Rate for {currencyForRateEdit.code}</DialogTitle>
-                    <DialogDescription>Define the rate to convert 1 {currencyForRateEdit.code} to the base currency ({baseCurrency?.code || "USD"}).</DialogDescription>
+                    <DialogDescription>Define the rate to convert 1 {currencyForRateEdit.code} to the base currency ({baseCurrencySymbolToShow}).</DialogDescription>
                 </DialogHeader>
                 <ExchangeRateForm
                     currency={currencyForRateEdit}
@@ -334,21 +366,21 @@ export default function SettingsPage() {
             {/* Clear Categories */}
             <AlertDialog open={isClearCategoriesDialogOpen} onOpenChange={setIsClearCategoriesDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingCategories}>
-                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingCategories ? "Clearing..." : "Clear Categories"}
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingCategories || !user}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingCategories ? "Clearing..." : "Clear Categories & Defaults"}
                     </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                    <AlertDialogTitle>Clear Categories?</AlertDialogTitle>
+                    <AlertDialogTitle>Clear Categories & Re-seed Defaults?</AlertDialogTitle>
                     <AlertDialogDescription>
                         This will delete all your categories and re-seed the default ones. Expenses/Budgets using custom categories might need adjustment. This action cannot be undone.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                     <AlertDialogCancel disabled={isClearingCategories}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleConfirmClearData('categories', setIsClearCategoriesDialogOpen, setIsClearingCategories, 'Categories', true)} disabled={isClearingCategories}>
-                        Yes, Clear Categories
+                    <AlertDialogAction onClick={() => handleConfirmClearData('categories', setIsClearCategoriesDialogOpen, setIsClearingCategories, 'Categories & Defaults', true)} disabled={isClearingCategories}>
+                        Yes, Clear & Re-seed
                     </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -357,21 +389,21 @@ export default function SettingsPage() {
             {/* Clear Budget Goals */}
              <AlertDialog open={isClearBudgetsDialogOpen} onOpenChange={setIsClearBudgetsDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingBudgets}>
-                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingBudgets ? "Clearing..." : "Clear Budgets"}
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingBudgets || !user}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingBudgets ? "Clearing..." : "Clear Budgets & Defaults"}
                     </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                    <AlertDialogTitle>Clear Budget Goals?</AlertDialogTitle>
+                    <AlertDialogTitle>Clear Budget Goals & Re-seed Defaults?</AlertDialogTitle>
                     <AlertDialogDescription>
                         This will delete all your budget goals and re-seed any default sample goals. This action cannot be undone.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                     <AlertDialogCancel disabled={isClearingBudgets}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleConfirmClearData('budgetGoals', setIsClearBudgetsDialogOpen, setIsClearingBudgets, 'Budget Goals', true)} disabled={isClearingBudgets}>
-                        Yes, Clear Budgets
+                    <AlertDialogAction onClick={() => handleConfirmClearData('budgetGoals', setIsClearBudgetsDialogOpen, setIsClearingBudgets, 'Budgets & Defaults', true)} disabled={isClearingBudgets}>
+                        Yes, Clear & Re-seed
                     </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -380,8 +412,8 @@ export default function SettingsPage() {
             {/* Clear Expenses */}
             <AlertDialog open={isClearExpensesDialogOpen} onOpenChange={setIsClearExpensesDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingExpenses}>
-                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingExpenses ? "Clearing..." : "Clear Expenses"}
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingExpenses || !user}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingExpenses ? "Clearing..." : "Clear All Expenses"}
                     </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -403,8 +435,8 @@ export default function SettingsPage() {
             {/* Clear Incomes */}
             <AlertDialog open={isClearIncomesDialogOpen} onOpenChange={setIsClearIncomesDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingIncomes}>
-                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingIncomes ? "Clearing..." : "Clear Incomes"}
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingIncomes || !user}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingIncomes ? "Clearing..." : "Clear All Incomes"}
                     </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -426,21 +458,21 @@ export default function SettingsPage() {
             {/* Clear Saving Goals */}
             <AlertDialog open={isClearSavingsDialogOpen} onOpenChange={setIsClearSavingsDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingSavings}>
-                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingSavings ? "Clearing..." : "Clear Saving Goals"}
+                    <Button variant="destructive" className="w-full shadow-md" disabled={isClearingSavings || !user}>
+                        <Trash2 className="mr-2 h-4 w-4" /> {isClearingSavings ? "Clearing..." : "Clear Saving Goals & Defaults"}
                     </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                    <AlertDialogTitle>Clear Saving Goals?</AlertDialogTitle>
+                    <AlertDialogTitle>Clear Saving Goals & Re-seed Defaults?</AlertDialogTitle>
                     <AlertDialogDescription>
                         This will delete all your saving goals and re-seed any default sample goals. This action cannot be undone.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                     <AlertDialogCancel disabled={isClearingSavings}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleConfirmClearData('savingGoals', setIsClearSavingsDialogOpen, setIsClearingSavings, 'Saving Goals', true)} disabled={isClearingSavings}>
-                        Yes, Clear Saving Goals
+                    <AlertDialogAction onClick={() => handleConfirmClearData('savingGoals', setIsClearSavingsDialogOpen, setIsClearingSavings, 'Saving Goals & Defaults', true)} disabled={isClearingSavings}>
+                        Yes, Clear & Re-seed
                     </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
