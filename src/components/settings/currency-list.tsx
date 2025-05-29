@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, Edit3 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-// import { BASE_CURRENCY_ID } from "@/lib/currency-utils"; // Already passed as prop
 
 interface CurrencyListProps {
   currencies: Currency[];
@@ -15,19 +14,27 @@ interface CurrencyListProps {
   onDeleteCurrency: (currencyId: string) => void;
   onEditRate: (currency: Currency) => void;
   baseCurrencyId: string;
+  baseCurrencySymbol: string; // Added this prop
 }
 
-export function CurrencyList({ currencies, exchangeRates, onEditCurrency, onDeleteCurrency, onEditRate, baseCurrencyId }: CurrencyListProps) {
+export function CurrencyList({ 
+  currencies, 
+  exchangeRates, 
+  onEditCurrency, 
+  onDeleteCurrency, 
+  onEditRate, 
+  baseCurrencyId,
+  baseCurrencySymbol // Destructure new prop
+}: CurrencyListProps) {
 
   if (currencies.length === 0) {
     return <p className="text-muted-foreground text-center py-8">No currencies found. Add one to get started!</p>;
   }
 
   const getExchangeRateDisplay = (currency: Currency): string => {
-    const baseCurrency = currencies.find(c => c.id === baseCurrencyId);
-    if (currency.id === baseCurrencyId) return `Base Currency (1.00 ${baseCurrency?.code || 'BASE'})`;
+    if (currency.id === baseCurrencyId) return `Base Currency (1.00 ${baseCurrencySymbol})`;
     const rate = exchangeRates.find(r => r.currencyId === currency.id);
-    return rate ? `1 ${currency.code} = ${rate.rateToBase.toFixed(4)} ${baseCurrency?.code || 'BASE'}` : "Rate not set";
+    return rate ? `1 ${currency.code} = ${rate.rateToBase.toFixed(4)} ${baseCurrencySymbol}` : "Rate not set";
   };
 
   return (

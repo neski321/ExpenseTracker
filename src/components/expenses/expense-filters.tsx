@@ -259,7 +259,13 @@ export function ExpenseFilters({ categories, paymentMethods, onApplyFilters, ini
                 <FormControl>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input type="number" placeholder="0.00" className="pl-8" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} />
+                    <Input 
+                      type="number" 
+                      placeholder="0.00" 
+                      className="pl-8" 
+                      value={(field.value === undefined || isNaN(field.value)) ? "" : field.value.toString()}
+                      onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                    />
                   </div>
                 </FormControl>
                 <FormMessage />
@@ -275,7 +281,13 @@ export function ExpenseFilters({ categories, paymentMethods, onApplyFilters, ini
                 <FormControl>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input type="number" placeholder="e.g., 100.00" className="pl-8" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} />
+                    <Input 
+                      type="number" 
+                      placeholder="e.g., 100.00" 
+                      className="pl-8" 
+                      value={(field.value === undefined || isNaN(field.value)) ? "" : field.value.toString()}
+                      onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                    />
                   </div>
                 </FormControl>
                 <FormMessage />

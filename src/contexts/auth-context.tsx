@@ -9,7 +9,9 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import {
     signUpWithEmail as firebaseSignUpWithEmail,
     signInWithEmail as firebaseSignInWithEmail,
-    signOutUser
+    signOutUser,
+    reauthenticateUser as firebaseReauthenticateUser, // Added
+    updateUserEmailFirebase, // Added
 } from "@/lib/firebase-auth";
 import type { SignUpCredentials, SignInCredentials } from "@/lib/firebase-auth";
 import { seedDefaultUserData } from "@/lib/services/user-service";
@@ -20,6 +22,8 @@ interface AuthContextType {
   signUp: (credentials: SignUpCredentials) => Promise<User | null>;
   signIn: (credentials: SignInCredentials) => Promise<User | null>;
   logOut: () => Promise<void>;
+  reauthenticateCurrentEmail: (password: string) => Promise<void>; // Added
+  updateUserEmail: (newEmail: string) => Promise<void>; // Added
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,7 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+      setUser(firebaseUser); // This will update user state, including email changes
       setLoading(false);
     });
     return () => unsubscribe();
@@ -73,6 +77,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const handleReauthenticate = async (password: string) => {
+    try {
+      await firebaseReauthenticateUser(password);
+    } catch (error) {
+      console.error("Reauthentication error in AuthContext:", error);
+      throw error;
+    }
+  };
+
+  const handleUpdateUserEmail = async (newEmail: string) => {
+    try {
+      await updateUserEmailFirebase(newEmail);
+      // The onAuthStateChanged listener to pick up the email change and update the user state automatically.
+      // Optionally, force a refresh of the user object if needed:
+      const updatedUser = auth.currentUser;
+       if (updatedUser) setUser(updatedUser);
+    } catch (error) {
+      console.error("Update email error in AuthContext:", error);
+      throw error;
+    }
+  };
+
 
   const value = {
     user,
@@ -80,6 +106,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     signUp: handleSignUp,
     signIn: handleSignIn,
     logOut: handleLogOut,
+    reauthenticateCurrentEmail: handleReauthenticate, // Added
+    updateUserEmail: handleUpdateUserEmail, // Added
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
