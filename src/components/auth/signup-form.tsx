@@ -22,7 +22,26 @@ import { UserPlus } from "lucide-react";
 
 const signupFormSchema = z.object({
   email: z.string().email("Please enter a valid email address."),
-  password: z.string().min(6, "Password must be at least 6 characters long."),
+  password: z.string()
+    .min(6, "Password must be at least 6 characters long.")
+    .refine(val => !/(012345|123456|234567|345678|456789|567890)/.test(val), {
+      message: "Password should not contain common numeric sequences (e.g., '123456')."
+    })
+    .refine(val => !/(987654|876543|765432|654321|543210|432109)/.test(val), {
+      message: "Password should not contain common reverse numeric sequences (e.g., '654321')."
+    })
+    .refine(val => !/(abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz)/.test(val.toLowerCase()), {
+      message: "Password should not contain common alphabetic sequences (e.g., 'abc')."
+    })
+    .refine(val => !/(zyx|yxw|xwv|wvu|vut|uts|tsr|srq|rqp|qpo|pon|onm|nml|mlk|lkj|kji|jih|ihg|hgf|gfe|fed|edc|dcb|cba)/.test(val.toLowerCase()), {
+      message: "Password should not contain common reverse alphabetic sequences (e.g., 'cba')."
+    })
+    .refine(val => !/(qwerty|asdfgh|zxcvbn)/.test(val.toLowerCase()), {
+      message: "Password should not contain common keyboard patterns (e.g., 'qwerty')."
+    })
+    .refine(val => !/(.)\1{3,}/.test(val), { // Check for 4 or more identical consecutive characters
+      message: "Password should not contain more than three repeated characters (e.g., 'aaaa')."
+    }),
   confirmPassword: z.string(),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords do not match.",
