@@ -34,7 +34,10 @@ export default function CategoriesPage() {
   const { toast } = useToast();
 
   const fetchCategories = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setIsLoading(false); // Stop loading if no user, added in Firestore migration
+      return;
+    }
     setIsLoading(true);
     try {
       const userCategories = await getCategoriesCol(user.uid);
@@ -51,7 +54,7 @@ export default function CategoriesPage() {
     if (user) {
       fetchCategories();
     } else {
-      setIsLoading(false); // Stop loading if no user
+      setIsLoading(false); 
     }
   }, [user, fetchCategories]);
 
@@ -72,13 +75,24 @@ export default function CategoriesPage() {
 
   const handleUpdateCategory = async (data: Omit<Category, "id" | "iconName">) => {
     if (!user || !editingCategory) return;
-    // Preserve existing iconName if not changed by form (currently form doesn't change it)
-    const categoryUpdateData: Partial<Omit<Category, "id">> = {
-        ...data,
-        iconName: editingCategory.iconName 
+    
+    // data from form only contains name and parentId (which is string or undefined)
+    const categoryUpdatePayload: Partial<Omit<Category, "id">> = {
+        name: data.name,
+        parentId: data.parentId, 
     };
+
+    // Preserve existing iconName only if it's defined.
+    // If editingCategory.iconName is undefined, we do not want to send `iconName: undefined` to Firestore.
+    if (editingCategory.iconName !== undefined) {
+      categoryUpdatePayload.iconName = editingCategory.iconName;
+    }
+    // Note: This won't remove an iconName if it existed and should now be cleared,
+    // as the form doesn't currently support icon editing. The goal here is to prevent
+    // sending `iconName: undefined`.
+
     try {
-      await updateCategoryDoc(user.uid, editingCategory.id, categoryUpdateData);
+      await updateCategoryDoc(user.uid, editingCategory.id, categoryUpdatePayload);
       toast({ title: "Category Updated!", description: `Category "${data.name}" has been successfully updated.` });
       fetchCategories(); // Refresh list
       setEditingCategory(undefined);

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import type { Category } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import React from "react"; // Added React import
 
 const NO_PARENT_VALUE = "__none__";
 
@@ -48,27 +49,26 @@ export function CategoryForm({ onSubmit, existingCategory, allCategories }: Cate
     },
   });
 
-  const potentialParents = allCategories.filter(cat => {
-    if (existingCategory && cat.id === existingCategory.id) return false;
-    return true;
-  });
+  const sortedPotentialParents = React.useMemo(() => {
+    return allCategories
+      .filter(cat => {
+        if (existingCategory && cat.id === existingCategory.id) return false; // Cannot be its own parent
+        // Optionally, prevent setting a category's child as its parent to avoid circular dependencies
+        // This would require a more complex check if deep nesting is possible and needs prevention
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allCategories, existingCategory]);
+
 
   function handleSubmit(data: CategoryFormValues) {
-    const submitData = {
+    const submitData: Omit<Category, "id" | "iconName"> = {
       name: data.name,
       parentId: data.parentId === NO_PARENT_VALUE ? undefined : data.parentId,
-      // iconName is not part of the form values here.
-      // If editing, existingCategory.iconName would be preserved in the parent component.
-      // If adding, iconName would be undefined by default.
     };
+
     onSubmit(submitData);
-    toast({
-      title: existingCategory ? "Category Updated!" : "Category Added!",
-      description: `Category "${data.name}" has been successfully ${existingCategory ? 'updated' : 'added'}.`,
-    });
-    if (!existingCategory) {
-      form.reset({ name: "", parentId: NO_PARENT_VALUE });
-    }
+    // Toast message is now handled in the parent page component after successful Firestore operation
   }
 
   return (
@@ -105,7 +105,7 @@ export function CategoryForm({ onSubmit, existingCategory, allCategories }: Cate
                 </FormControl>
                 <SelectContent>
                   <SelectItem value={NO_PARENT_VALUE}>None (Top-level category)</SelectItem>
-                  {potentialParents.map((category) => (
+                  {sortedPotentialParents.map((category) => (
                     <SelectItem key={category.id} value={category.id} disabled={category.id === existingCategory?.id}>
                       {category.name}
                     </SelectItem>

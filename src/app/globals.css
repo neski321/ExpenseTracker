@@ -27,11 +27,18 @@ body {
     --border: 205 30% 85%;
     --input: 0 0% 100%; /* White for input background */
     --ring: 207 88% 68%; /* Primary color */
-    --chart-1: 207 88% 68%; /* Primary */
-    --chart-2: 270 25% 67%; /* Accent */
-    --chart-3: 173 58% 39%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 207 88% 68%; /* Light Blue */
+    --chart-2: 270 25% 67%; /* Muted Purple */
+    --chart-3: 173 58% 39%; /* Green */
+    --chart-4: 43 74% 66%;  /* Orange-Yellow */
+    --chart-5: 27 87% 67%;  /* Orange */
+    --chart-6: 180 70% 55%; /* Teal/Cyan */
+    --chart-7: 330 70% 70%; /* Pink */
+    --chart-8: 90 60% 60%;  /* Lime Green */
+    --chart-9: 15 80% 65%;  /* Reddish-Orange */
+    --chart-10: 220 70% 70%; /* Deeper Blue */
+    --chart-11: 60 90% 65%; /* Yellow */
+    --chart-12: 250 60% 75%; /* Lavender */
     --radius: 0.5rem;
 
     /* Sidebar specific theme */
@@ -65,6 +72,18 @@ body {
     --border: 210 25% 35%;
     --input: 210 25% 25%;
     --ring: 207 88% 68%; /* Primary color */
+    --chart-1: 207 80% 65%; 
+    --chart-2: 270 30% 70%; 
+    --chart-3: 173 50% 45%; 
+    --chart-4: 43 70% 60%;  
+    --chart-5: 27 80% 60%;  
+    --chart-6: 180 65% 50%; 
+    --chart-7: 330 65% 65%; 
+    --chart-8: 90 55% 55%;  
+    --chart-9: 15 75% 60%;  
+    --chart-10: 220 65% 65%; 
+    --chart-11: 60 80% 60%; 
+    --chart-12: 250 55% 70%;
 
     /* Sidebar specific theme for dark mode */
     --sidebar-background: 210 25% 18%;
