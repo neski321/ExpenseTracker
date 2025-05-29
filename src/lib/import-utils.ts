@@ -4,8 +4,7 @@ import * as XLSX from 'xlsx';
 import type { Expense, Category, PaymentMethod, Currency, Income, IncomeSource } from '@/lib/types';
 import { isValid, parseISO } from 'date-fns';
 import { BASE_CURRENCY_ID } from './currency-utils';
-import { addCategoryDoc } from './services/category-service'; // For creating categories if needed
-import { getCategoriesCol } from './services/category-service'; // To fetch user categories
+import { addCategoryDoc } from './services/category-service'; // For creating categories
 
 // --- Generic File Parsers ---
 
@@ -78,7 +77,7 @@ function parseBoolean(value: any): boolean | undefined {
     const strValue = normalizeString(value?.toString());
     if (strValue === 'true' || strValue === 'yes' || strValue === '1') return true;
     if (strValue === 'false' || strValue === 'no' || strValue === '0') return false;
-    return undefined; // Return undefined if not clearly boolean, to let schema defaults apply
+    return undefined; 
 }
 
 
@@ -103,19 +102,20 @@ function getExpenseColumnIndexMap(headers: string[]): Record<string, number> {
 }
 
 
-export function processImportedExpenses(
+export async function processImportedExpenses(
+  userId: string, // Added userId for category creation
   rawData: any[][],
-  userCategories: Category[], // Now expects Firestore-backed categories
-  userCurrencies: Currency[],   // Expects Firestore-backed currencies
-  userPaymentMethods: PaymentMethod[] // Expects Firestore-backed payment methods
-): { newExpenses: Omit<Expense, "id">[]; errors: string[]; infoMessages: string[]; skippedRows: number, createdCategoryCount: number } {
+  userCategories: Category[], 
+  userCurrencies: Currency[],  
+  userPaymentMethods: PaymentMethod[] 
+): Promise<{ newExpenses: Omit<Expense, "id">[]; errors: string[]; infoMessages: string[]; skippedRows: number; createdCategoryCount: number }> {
   const newExpenses: Omit<Expense, "id">[] = [];
   const errors: string[] = [];
   const infoMessages: string[] = [];
   let skippedRows = 0;
-  // This count is now just informational, actual creation would be handled by a dedicated service call
-  // if we were to implement on-the-fly category creation via import. For now, we match existing.
-  const createdCategoryCount = 0; 
+  let createdCategoryCount = 0; 
+
+  let currentAppCategories = [...userCategories]; // Mutable copy for this import session
 
   if (rawData.length === 0) {
     errors.push("Imported file is empty.");
@@ -135,13 +135,13 @@ export function processImportedExpenses(
       return { newExpenses, errors, infoMessages, skippedRows, createdCategoryCount };
   }
 
-  dataRows.forEach((row, index) => {
-    const rowIndex = index + 2;
+  for (const row of dataRows) { // Changed to for...of for async/await inside loop
+    const rowIndex = dataRows.indexOf(row) + 2;
 
     const dateValue = row[colMap['date']];
     let amountValue = row[colMap['amount']];
      if (typeof amountValue === 'string') {
-        amountValue = amountValue.replace(/,/g, ''); // Remove commas for thousands separator
+        amountValue = amountValue.replace(/,/g, ''); 
     }
 
     const csvSubCategoryNameInput = row[colMap['category']];
@@ -157,7 +157,7 @@ export function processImportedExpenses(
     if (!dateValue || !amountValue || !csvSubCategoryNameInput) {
       infoMessages.push(`Row ${rowIndex}: Missing required data (Date, Amount, or Category column). Row skipped.`);
       skippedRows++;
-      return;
+      continue;
     }
 
     const date = parseImportedDate(dateValue);
@@ -167,12 +167,12 @@ export function processImportedExpenses(
     if (!date) {
       infoMessages.push(`Row ${rowIndex}: Invalid date format for '${dateValue}'. Row skipped.`);
       skippedRows++;
-      return;
+      continue;
     }
     if (isNaN(amount) || amount < 0) { 
        infoMessages.push(`Row ${rowIndex}: Invalid amount '${amountValue}'. Must be a non-negative number. Row skipped.`);
        skippedRows++;
-       return;
+       continue;
     }
 
     let targetCategoryId: string | undefined = undefined;
@@ -184,41 +184,58 @@ export function processImportedExpenses(
         csvMainCategoryName = "Transport";
     }
 
-    let finalCategoryNameForDescription = csvSubCategoryName;
-
     if (csvMainCategoryName) {
-        const mainCategory = userCategories.find(c => normalizeString(c.name) === normalizeString(csvMainCategoryName) && !c.parentId);
+        let mainCategory = currentAppCategories.find(c => normalizeString(c.name) === normalizeString(csvMainCategoryName) && !c.parentId);
         if (!mainCategory) {
-            infoMessages.push(`Row ${rowIndex}: Main category '${csvMainCategoryName}' not found. Row skipped. Please add it first or check spelling.`);
-            skippedRows++;
-            return;
+            infoMessages.push(`Row ${rowIndex}: Main category '${csvMainCategoryName}' not found. Creating it.`);
+            try {
+                mainCategory = await addCategoryDoc(userId, { name: csvMainCategoryName });
+                currentAppCategories.push(mainCategory);
+                createdCategoryCount++;
+            } catch (e: any) {
+                errors.push(`Row ${rowIndex}: Failed to create main category '${csvMainCategoryName}': ${e.message}. Row skipped.`);
+                skippedRows++;
+                continue;
+            }
         }
 
-        const subCategory = userCategories.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && c.parentId === mainCategory.id);
+        let subCategory = currentAppCategories.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && c.parentId === mainCategory.id);
         if (!subCategory) {
-            infoMessages.push(`Row ${rowIndex}: Sub-category '${csvSubCategoryName}' under main category '${mainCategory.name}' not found. Row skipped. Please add it first or check spelling.`);
-            skippedRows++;
-            return;
+             infoMessages.push(`Row ${rowIndex}: Sub-category '${csvSubCategoryName}' under '${mainCategory.name}' not found. Creating it.`);
+             try {
+                subCategory = await addCategoryDoc(userId, { name: csvSubCategoryName, parentId: mainCategory.id });
+                currentAppCategories.push(subCategory);
+                createdCategoryCount++;
+             } catch (e: any) {
+                errors.push(`Row ${rowIndex}: Failed to create sub-category '${csvSubCategoryName}': ${e.message}. Row skipped.`);
+                skippedRows++;
+                continue;
+            }
         }
         targetCategoryId = subCategory.id;
-        finalCategoryNameForDescription = subCategory.name;
 
     } else if (csvSubCategoryName) { 
-        const mainCategory = userCategories.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && !c.parentId);
+        let mainCategory = currentAppCategories.find(c => normalizeString(c.name) === normalizeString(csvSubCategoryName) && !c.parentId);
         if (!mainCategory) {
-            infoMessages.push(`Row ${rowIndex}: Main category '${csvSubCategoryName}' (from 'Category' column) not found. Row skipped. Please add it first or check spelling.`);
-            skippedRows++;
-            return;
+            infoMessages.push(`Row ${rowIndex}: Main category '${csvSubCategoryName}' (from 'Category' column) not found. Creating it.`);
+            try {
+                mainCategory = await addCategoryDoc(userId, { name: csvSubCategoryName });
+                currentAppCategories.push(mainCategory);
+                createdCategoryCount++;
+            } catch (e: any) {
+                errors.push(`Row ${rowIndex}: Failed to create main category '${csvSubCategoryName}': ${e.message}. Row skipped.`);
+                skippedRows++;
+                continue;
+            }
         }
         targetCategoryId = mainCategory.id;
-        finalCategoryNameForDescription = mainCategory.name;
     }
 
 
     if (!targetCategoryId) {
-        infoMessages.push(`Row ${rowIndex}: Could not determine a valid category for '${csvMainCategoryName || csvSubCategoryName}'. Ensure categories exist. Row skipped.`);
+        infoMessages.push(`Row ${rowIndex}: Could not determine a valid category for '${csvMainCategoryName || csvSubCategoryName}'. Row skipped.`);
         skippedRows++;
-        return;
+        continue;
     }
 
     let currencyIdToUse = BASE_CURRENCY_ID;
@@ -242,10 +259,9 @@ export function processImportedExpenses(
     }
 
     let descriptionForExpense = noteValue;
-    if (!descriptionForExpense && finalCategoryNameForDescription) {
-        descriptionForExpense = finalCategoryNameForDescription;
-    } else if (!descriptionForExpense) {
-        descriptionForExpense = "Imported Expense";
+    if (!descriptionForExpense) {
+        const foundCategory = currentAppCategories.find(c => c.id === targetCategoryId);
+        descriptionForExpense = foundCategory ? foundCategory.name : "Imported Expense";
     }
 
 
@@ -254,7 +270,7 @@ export function processImportedExpenses(
     if (isSubscription) {
         nextDueDate = parseImportedDate(nextDueDateValue);
         if (!nextDueDate && (isSubscriptionValue !== undefined && isSubscriptionValue !== "")) { 
-            infoMessages.push(`Row ${rowIndex}: 'Next Due Date' is missing or invalid for subscription marked as true. Subscription flag ignored.`);
+            infoMessages.push(`Row ${rowIndex}: 'Next Due Date' is missing or invalid for subscription marked as true. Subscription flag ignored for this row.`);
         }
     }
 
@@ -268,7 +284,7 @@ export function processImportedExpenses(
       isSubscription: isSubscription && !!nextDueDate,
       nextDueDate: isSubscription && nextDueDate ? nextDueDate : undefined,
     });
-  });
+  }
 
   return { newExpenses, errors, infoMessages, skippedRows, createdCategoryCount };
 }
@@ -293,9 +309,10 @@ function getIncomeColumnIndexMap(headers: string[]): Record<string, number> {
 }
 
 export function processImportedIncomes(
+  // userId: string, // Potentially needed if income sources can be created
   rawData: any[][],
-  userIncomeSources: IncomeSource[], // Expects Firestore-backed income sources
-  userCurrencies: Currency[]     // Expects Firestore-backed currencies
+  userIncomeSources: IncomeSource[], 
+  userCurrencies: Currency[]     
 ): { newIncomes: Omit<Income, "id">[]; errors: string[]; infoMessages: string[]; skippedRows: number } {
   const newIncomes: Omit<Income, "id">[] = [];
   const errors: string[] = [];
@@ -339,14 +356,18 @@ export function processImportedIncomes(
     }
 
     const date = parseImportedDate(dateValue);
-    const amount = parseFloat(amountValue?.toString().replace(/[^0-9.-]+/g, "") || "0");
+    let amount = parseFloat(amountValue?.toString().replace(/,/g, "") || "0"); // Remove commas from amount
+    if (typeof amountValue === 'string' && amountValue.includes('(') && amountValue.includes(')')) { // Handle (1,234.56) for negative
+      amount = -parseFloat(amountValue.replace(/[(),]/g, ''));
+    }
+
 
     if (!date) {
       infoMessages.push(`Row ${rowIndex}: Invalid date format for income '${dateValue}'. Row skipped.`);
       skippedRows++;
       return;
     }
-    if (isNaN(amount) || amount <= 0) {
+    if (isNaN(amount) || amount <= 0) { // Income should generally be positive
       infoMessages.push(`Row ${rowIndex}: Invalid amount for income '${amountValue}'. Must be a positive number. Row skipped.`);
       skippedRows++;
       return;

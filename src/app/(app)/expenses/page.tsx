@@ -186,27 +186,23 @@ export default function ExpensesPage() {
         return;
       }
 
-      if (rawData.length < 2) { // Header + at least one data row
+      if (rawData.length < 2) { 
           toast({ title: "Import Error", description: "File is empty or has no data rows.", variant: "destructive"});
           setIsImporting(false);
           if (fileInputRef.current) fileInputRef.current.value = "";
           return;
       }
       
-      // Fetch current user's categories, payment methods, currencies from Firestore for accurate matching
-      const [userCategories, userPaymentMethods, userCurrencies] = await Promise.all([
-        getCategoriesCol(user.uid),
-        getPaymentMethodsCol(user.uid),
-        getCurrenciesCol(user.uid)
-      ]);
+      const userCategories = await getCategoriesCol(user.uid);
+      const userPaymentMethods = await getPaymentMethodsCol(user.uid);
+      const userCurrencies = await getCurrenciesCol(user.uid);
       
-      // Update local state for these if needed for immediate use by ExpenseForm after import
-      // (already fetched via fetchPageData, so this might just re-confirm)
       setCategories(userCategories); 
       setPaymentMethods(userPaymentMethods);
       setCurrencies(userCurrencies);
 
-      const { newExpenses: importedExpenses, errors: processingErrors, infoMessages: processingInfoMessages, skippedRows, createdCategoryCount } = processImportedExpenses(
+      const { newExpenses: importedExpenses, errors: processingErrors, infoMessages: processingInfoMessages, skippedRows, createdCategoryCount } = await processImportedExpenses(
+        user.uid, // Pass userId for category creation
         rawData,
         userCategories, 
         userCurrencies,
@@ -220,12 +216,10 @@ export default function ExpensesPage() {
       }
       
       if (createdCategoryCount > 0) {
-        // If categories were created, we need to re-fetch them to update the category list for the form
-        const updatedUserCategories = await getCategoriesCol(user.uid);
-        setCategories(updatedUserCategories); // Update local state for the form
+        toast({ title: "Categories Updated", description: `${createdCategoryCount} new category/sub-category(-ies) created during import.`});
       }
       
-      fetchPageData(); // Refresh all expense data from Firestore
+      fetchPageData();
 
       let summaryMessage = `${importedExpenses.length} expense(s) imported.`;
       if (skippedRows > 0) {
