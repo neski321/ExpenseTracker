@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { z as zodType } from "zod"; 
+import type { z as zodType } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Category, Expense, PaymentMethod, Currency } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { z } from "zod"; 
+import { z } from "zod";
 import React, { useEffect, useState } from "react";
 import { BASE_CURRENCY_ID } from "@/lib/currency-utils";
 import { getHierarchicalCategoryOptions, type HierarchicalCategoryOption } from "@/lib/category-utils";
@@ -48,13 +48,13 @@ const expenseFormSchema = z.object({
   return true;
 }, {
   message: "Next due date is required for subscriptions.",
-  path: ["nextDueDate"], 
+  path: ["nextDueDate"],
 });
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
 interface ExpenseFormProps {
-  categories: Category[]; // This is the flat list of all categories
+  categories: Category[];
   paymentMethods: PaymentMethod[];
   currencies: Currency[];
   onSubmit: (data: ExpenseFormValues) => void;
@@ -64,14 +64,16 @@ interface ExpenseFormProps {
 export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, initialData }: ExpenseFormProps) {
   const { toast } = useToast();
   const [isSuggestingCategory, setIsSuggestingCategory] = useState(false);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+  const [nextDueDatePopoverOpen, setNextDueDatePopoverOpen] = useState(false);
 
   const form = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
     defaultValues: initialData ? {
       ...initialData,
       amount: initialData.amount,
-      paymentMethodId: initialData.paymentMethodId || FORM_NO_PAYMENT_METHOD_VALUE, 
-      currencyId: initialData.currencyId || BASE_CURRENCY_ID, 
+      paymentMethodId: initialData.paymentMethodId || FORM_NO_PAYMENT_METHOD_VALUE,
+      currencyId: initialData.currencyId || BASE_CURRENCY_ID,
       isSubscription: initialData.isSubscription || false,
       nextDueDate: initialData.nextDueDate ? new Date(initialData.nextDueDate) : undefined,
     } : {
@@ -79,8 +81,8 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
       amount: 0,
       date: new Date(),
       categoryId: "",
-      paymentMethodId: FORM_NO_PAYMENT_METHOD_VALUE, 
-      currencyId: BASE_CURRENCY_ID, 
+      paymentMethodId: FORM_NO_PAYMENT_METHOD_VALUE,
+      currencyId: BASE_CURRENCY_ID,
       isSubscription: false,
       nextDueDate: undefined,
     },
@@ -88,10 +90,10 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
 
   const isSubscription = form.watch("isSubscription");
   const hierarchicalCategoriesForSelect: HierarchicalCategoryOption[] = React.useMemo(
-    () => getHierarchicalCategoryOptions(categories), 
+    () => getHierarchicalCategoryOptions(categories),
     [categories]
   );
-  
+
   const categoriesForAISuggestion = React.useMemo(() => {
     return categories.map(cat => ({ id: cat.id, name: cat.name, parentId: cat.parentId }));
   }, [categories]);
@@ -122,7 +124,7 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
         allCategories: categoriesForAISuggestion,
       };
       const result = await suggestCategory(suggestionInput);
-      
+
       if (result.suggestedCategoryId) {
         form.setValue("categoryId", result.suggestedCategoryId, { shouldValidate: true });
         toast({
@@ -159,7 +161,7 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
     onSubmit(submissionData);
     const selectedCurrency = currencies.find(c => c.id === submissionData.currencyId);
     const categoryName = hierarchicalCategoriesForSelect.find(c => c.value === submissionData.categoryId)?.originalName || "Category";
-    
+
     toast({
       title: initialData ? "Expense Updated!" : "Expense Added!",
       description: `${submissionData.isSubscription ? "Subscription for " : ""}${submissionData.description} (${categoryName}) for ${selectedCurrency?.symbol || ''}${submissionData.amount.toFixed(2)}.`,
@@ -244,7 +246,7 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
             render={({ field }) => (
               <FormItem className="flex flex-col">
                 <FormLabel>Date of Expense</FormLabel>
-                <Popover>
+                <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
                   <PopoverTrigger asChild>
                     <FormControl>
                       <Button
@@ -263,11 +265,14 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
                       </Button>
                     </FormControl>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0" align="center" sideOffset={8}>
                     <Calendar
                       mode="single"
                       selected={field.value}
-                      onSelect={field.onChange}
+                      onSelect={(selectedDate) => {
+                        field.onChange(selectedDate);
+                        setDatePopoverOpen(false);
+                      }}
                       disabled={(date) =>
                         date > new Date() || date < new Date("1900-01-01")
                       }
@@ -304,12 +309,12 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
                 </FormItem>
             )}
             />
-             <Button 
-              type="button" 
-              variant="outline" 
-              onClick={handleSuggestCategory} 
+             <Button
+              type="button"
+              variant="outline"
+              onClick={handleSuggestCategory}
               disabled={isSuggestingCategory}
-              className="w-full md:w-auto mb-1" // mb-1 to align with FormMessage spacing if select is invalid
+              className="w-full md:w-auto mb-1"
             >
               <Wand2 className="mr-2 h-4 w-4" />
               {isSuggestingCategory ? "Suggesting..." : "Suggest Category"}
@@ -340,7 +345,7 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
             </FormItem>
         )}
         />
-        
+
         <FormField
           control={form.control}
           name="isSubscription"
@@ -371,7 +376,7 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
             render={({ field }) => (
               <FormItem className="flex flex-col">
                 <FormLabel>Next Due Date</FormLabel>
-                <Popover>
+                <Popover open={nextDueDatePopoverOpen} onOpenChange={setNextDueDatePopoverOpen}>
                   <PopoverTrigger asChild>
                     <FormControl>
                       <Button
@@ -390,11 +395,14 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
                       </Button>
                     </FormControl>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0" align="center" sideOffset={8}>
                     <Calendar
                       mode="single"
                       selected={field.value}
-                      onSelect={field.onChange}
+                      onSelect={(selectedDate) => {
+                        field.onChange(selectedDate);
+                        setNextDueDatePopoverOpen(false);
+                      }}
                       initialFocus
                     />
                   </PopoverContent>

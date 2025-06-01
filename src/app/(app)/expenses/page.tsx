@@ -16,6 +16,16 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { getCategoriesCol } from "@/lib/services/category-service";
@@ -45,6 +55,9 @@ export default function ExpensesPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
+
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
+  const [expenseToDeleteId, setExpenseToDeleteId] = useState<string | null>(null);
 
   const fetchPageData = useCallback(async () => {
     if (!user) {
@@ -80,7 +93,7 @@ export default function ExpensesPage() {
     try {
       await addExpenseDoc(user.uid, data);
       toast({ title: "Expense Added!", description: "Your expense has been successfully recorded." });
-      fetchPageData(); 
+      fetchPageData();
       setIsFormOpen(false);
     } catch (error: any) {
       toast({ title: "Error Adding Expense", description: error.message || "Could not add expense.", variant: "destructive" });
@@ -97,7 +110,7 @@ export default function ExpensesPage() {
     try {
       await updateExpenseDoc(user.uid, editingExpense.id, data);
       toast({ title: "Expense Updated!", description: "Your expense has been successfully updated." });
-      fetchPageData(); 
+      fetchPageData();
       setEditingExpense(undefined);
       setIsFormOpen(false);
     } catch (error: any) {
@@ -105,14 +118,22 @@ export default function ExpensesPage() {
     }
   };
 
-  const handleDelete = async (expenseId: string) => {
-    if (!user) return;
+  const handleDeleteClick = (expenseId: string) => {
+    setExpenseToDeleteId(expenseId);
+    setIsConfirmDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!user || !expenseToDeleteId) return;
     try {
-      await deleteExpenseDoc(user.uid, expenseId);
+      await deleteExpenseDoc(user.uid, expenseToDeleteId);
       toast({ title: "Expense Deleted", description: "The expense has been removed successfully.", variant: "destructive" });
-      fetchPageData(); 
+      fetchPageData();
     } catch (error: any) {
       toast({ title: "Error Deleting Expense", description: error.message || "Could not delete expense.", variant: "destructive" });
+    } finally {
+      setIsConfirmDeleteDialogOpen(false);
+      setExpenseToDeleteId(null);
     }
   };
 
@@ -148,7 +169,7 @@ export default function ExpensesPage() {
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Expenses");
-    
+
     const today = format(new Date(), "yyyy-MM-dd");
     XLSX.writeFile(workbook, `PennyPincher_Expenses_${today}.xlsx`);
 
@@ -186,39 +207,39 @@ export default function ExpensesPage() {
         return;
       }
 
-      if (rawData.length < 2) { 
+      if (rawData.length < 2) {
           toast({ title: "Import Error", description: "File is empty or has no data rows.", variant: "destructive"});
           setIsImporting(false);
           if (fileInputRef.current) fileInputRef.current.value = "";
           return;
       }
-      
+
       const userCategories = await getCategoriesCol(user.uid);
       const userPaymentMethods = await getPaymentMethodsCol(user.uid);
       const userCurrencies = await getCurrenciesCol(user.uid);
-      
-      setCategories(userCategories); 
+
+      setCategories(userCategories);
       setPaymentMethods(userPaymentMethods);
       setCurrencies(userCurrencies);
 
       const { newExpenses: importedExpenses, errors: processingErrors, infoMessages: processingInfoMessages, skippedRows, createdCategoryCount } = await processImportedExpenses(
-        user.uid, // Pass userId for category creation
+        user.uid,
         rawData,
-        userCategories, 
+        userCategories,
         userCurrencies,
         userPaymentMethods
       );
 
       if (importedExpenses.length > 0) {
         for (const exp of importedExpenses) {
-          await addExpenseDoc(user.uid, exp); 
+          await addExpenseDoc(user.uid, exp);
         }
       }
-      
+
       if (createdCategoryCount > 0) {
         toast({ title: "Categories Updated", description: `${createdCategoryCount} new category/sub-category(-ies) created during import.`});
       }
-      
+
       fetchPageData();
 
       let summaryMessage = `${importedExpenses.length} expense(s) imported.`;
@@ -228,7 +249,7 @@ export default function ExpensesPage() {
       if (createdCategoryCount > 0) {
         summaryMessage += ` ${createdCategoryCount} new categor(y/ies) created.`;
       }
-      
+
 
       if (processingErrors.length > 0) {
         toast({
@@ -275,7 +296,7 @@ export default function ExpensesPage() {
       }
     }
   };
-  
+
   if (isLoading) {
     return (
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-theme(spacing.14))] bg-background p-4">
@@ -286,67 +307,85 @@ export default function ExpensesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="shadow-xl">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-2xl">Manage Expenses</CardTitle>
-            <CardDescription>Track your daily spending and keep your finances in order.</CardDescription>
-          </div>
-          <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
-            setIsFormOpen(isOpen);
-            if (!isOpen) setEditingExpense(undefined);
-          }}>
-            <DialogTrigger asChild>
-              <Button className="shadow-md" disabled={isImporting || isLoading}>
-                <PlusCircle className="mr-2 h-4 w-4" /> {editingExpense ? "Edit Expense" : "Add New Expense"}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingExpense ? "Edit Expense" : "Add New Expense"}</DialogTitle>
-                <DialogDescription>
-                  {editingExpense ? "Update the details of your expense." : "Enter the details of your new expense."}
-                </DialogDescription>
-              </DialogHeader>
-              <ExpenseForm
-                categories={categories}
-                paymentMethods={paymentMethods}
-                currencies={currencies}
-                onSubmit={editingExpense ? handleUpdateExpense : handleAddExpense}
-                initialData={editingExpense}
+    <>
+      <div className="space-y-6">
+        <Card className="shadow-xl">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl">Manage Expenses</CardTitle>
+              <CardDescription>Track your daily spending and keep your finances in order.</CardDescription>
+            </div>
+            <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
+              setIsFormOpen(isOpen);
+              if (!isOpen) setEditingExpense(undefined);
+            }}>
+              <DialogTrigger asChild>
+                <Button className="shadow-md" disabled={isImporting || isLoading}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> {editingExpense ? "Edit Expense" : "Add New Expense"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editingExpense ? "Edit Expense" : "Add New Expense"}</DialogTitle>
+                  <DialogDescription>
+                    {editingExpense ? "Update the details of your expense." : "Enter the details of your new expense."}
+                  </DialogDescription>
+                </DialogHeader>
+                <ExpenseForm
+                  categories={categories}
+                  paymentMethods={paymentMethods}
+                  currencies={currencies}
+                  onSubmit={editingExpense ? handleUpdateExpense : handleAddExpense}
+                  initialData={editingExpense}
+                />
+              </DialogContent>
+            </Dialog>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row justify-end gap-2 mb-4">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                accept=".csv, .xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                disabled={isImporting || isLoading}
               />
-            </DialogContent>
-          </Dialog>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row justify-end gap-2 mb-4">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              className="hidden"
-              accept=".csv, .xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-              disabled={isImporting || isLoading}
+              <Button variant="outline" onClick={handleImportClick} className="shadow-sm w-full sm:w-auto" disabled={isImporting || isLoading}>
+                <Upload className="mr-2 h-4 w-4" /> {isImporting ? "Importing..." : "Import Expenses"}
+              </Button>
+              <Button variant="outline" onClick={handleExport} className="shadow-sm w-full sm:w-auto" disabled={isImporting || expenses.length === 0 || isLoading}>
+                <Download className="mr-2 h-4 w-4" /> Export to Excel
+              </Button>
+            </div>
+            <ExpenseList
+              expenses={expenses}
+              categories={categories}
+              paymentMethods={paymentMethods}
+              currencies={currencies}
+              onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+              sourcePageIdentifier="expenses"
             />
-            <Button variant="outline" onClick={handleImportClick} className="shadow-sm w-full sm:w-auto" disabled={isImporting || isLoading}>
-              <Upload className="mr-2 h-4 w-4" /> {isImporting ? "Importing..." : "Import Expenses"}
-            </Button>
-            <Button variant="outline" onClick={handleExport} className="shadow-sm w-full sm:w-auto" disabled={isImporting || expenses.length === 0 || isLoading}>
-              <Download className="mr-2 h-4 w-4" /> Export to Excel
-            </Button>
-          </div>
-          <ExpenseList
-            expenses={expenses}
-            categories={categories}
-            paymentMethods={paymentMethods}
-            currencies={currencies}
-            onEdit={handleEdit} 
-            onDelete={handleDelete} 
-            sourcePageIdentifier="expenses"
-          />
-        </CardContent>
-      </Card>
-    </div>
+          </CardContent>
+        </Card>
+      </div>
+      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this expense.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setExpenseToDeleteId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete}>
+              Yes, delete expense
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
