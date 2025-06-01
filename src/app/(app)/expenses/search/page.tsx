@@ -6,7 +6,7 @@ import { ExpenseList } from "@/components/expenses/expense-list";
 import type { Expense, Category, PaymentMethod, Currency } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExpenseFilters, type ExpenseFilterValues } from "@/components/expenses/expense-filters";
-import { Search as SearchIcon } from "lucide-react"; 
+import { Search as SearchIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,28 +14,41 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
-import { getAllDescendantCategoryIds } from "@/lib/category-utils"; 
-import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc } from "@/lib/services/expense-service";
+import { getAllDescendantCategoryIds } from "@/lib/category-utils";
+import { getExpensesCol, updateExpenseDoc, deleteExpenseDoc } from "@/lib/services/expense-service";
 import { getCategoriesCol } from "@/lib/services/category-service";
 import { getPaymentMethodsCol } from "@/lib/services/payment-method-service";
 import { getCurrenciesCol } from "@/lib/services/currency-service";
 
 export default function SearchExpensesPage() {
   const { user } = useAuth();
-  const [allUserExpenses, setAllUserExpenses] = useState<Expense[]>([]); 
-  const [userCategories, setUserCategories] = useState<Category[]>([]); 
-  const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>([]); 
-  const [userCurrencies, setUserCurrencies] = useState<Currency[]>([]); 
+  const [allUserExpenses, setAllUserExpenses] = useState<Expense[]>([]);
+  const [userCategories, setUserCategories] = useState<Category[]>([]);
+  const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [userCurrencies, setUserCurrencies] = useState<Currency[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [activeFilters, setActiveFilters] = useState<ExpenseFilterValues>({});
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const { toast } = useToast();
+
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
+  const [expenseToDeleteId, setExpenseToDeleteId] = useState<string | null>(null);
 
   const fetchPageData = useCallback(async () => {
     if (!user) {
@@ -45,9 +58,9 @@ export default function SearchExpensesPage() {
     setIsLoading(true);
     try {
       const [
-        fetchedExpenses, 
-        fetchedCategories, 
-        fetchedPaymentMethods, 
+        fetchedExpenses,
+        fetchedCategories,
+        fetchedPaymentMethods,
         fetchedCurrencies
       ] = await Promise.all([
         getExpensesCol(user.uid),
@@ -73,7 +86,7 @@ export default function SearchExpensesPage() {
 
 
   const filteredExpenses = useMemo(() => {
-    let currentlyFilteredExpenses = [...allUserExpenses]; 
+    let currentlyFilteredExpenses = [...allUserExpenses];
 
     if (Object.keys(activeFilters).length > 0) {
         currentlyFilteredExpenses = allUserExpenses.filter(expense => {
@@ -84,7 +97,7 @@ export default function SearchExpensesPage() {
         }
         if (match && activeFilters.dateRange?.to) {
             const toDate = new Date(activeFilters.dateRange.to);
-            toDate.setHours(23, 59, 59, 999); 
+            toDate.setHours(23, 59, 59, 999);
             if (new Date(expense.date) > toDate) match = false;
         }
 
@@ -107,7 +120,7 @@ export default function SearchExpensesPage() {
         if (match && activeFilters.paymentMethodId) {
             if (expense.paymentMethodId !== activeFilters.paymentMethodId) match = false;
         }
-        
+
         return match;
         });
     }
@@ -127,13 +140,32 @@ export default function SearchExpensesPage() {
   const handleUpdateExpense = async (data: Omit<Expense, "id">) => {
     if (!user || !editingExpense) return;
     try {
-      await updateFirestoreExpenseDoc(user.uid, editingExpense.id, data);
+      await updateExpenseDoc(user.uid, editingExpense.id, data);
       toast({ title: "Expense Updated", description: `"${data.description}" has been updated.` });
-      fetchPageData(); // Re-fetch all data to reflect changes in the list
+      fetchPageData();
       setEditingExpense(undefined);
       setIsFormOpen(false);
     } catch (error: any) {
       toast({title: "Error", description: error.message || "Could not update expense.", variant: "destructive"});
+    }
+  };
+
+  const handleDeleteExpenseClick = (expenseId: string) => {
+    setExpenseToDeleteId(expenseId);
+    setIsConfirmDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDeleteExpense = async () => {
+    if (!user || !expenseToDeleteId) return;
+    try {
+      await deleteExpenseDoc(user.uid, expenseToDeleteId);
+      toast({ title: "Expense Deleted", description: "The expense has been removed.", variant: "destructive" });
+      fetchPageData();
+    } catch (error: any) {
+      toast({ title: "Error Deleting Expense", description: error.message || "Could not delete expense.", variant: "destructive" });
+    } finally {
+      setIsConfirmDeleteDialogOpen(false);
+      setExpenseToDeleteId(null);
     }
   };
 
@@ -142,70 +174,85 @@ export default function SearchExpensesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="shadow-xl">
-        <CardHeader>
-          <CardTitle className="text-2xl flex items-center">
-            <SearchIcon className="mr-3 h-7 w-7 text-primary" />
-            Search & Filter Expenses
-          </CardTitle>
-          <CardDescription>Refine your expense list using the filters below.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ExpenseFilters 
-            categories={userCategories}
-            paymentMethods={userPaymentMethods}
-            onApplyFilters={handleApplyFilters}
-            initialFilters={activeFilters}
-          />
-        </CardContent>
-      </Card>
+    <>
+      <div className="space-y-6">
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-2xl flex items-center">
+              <SearchIcon className="mr-3 h-7 w-7 text-primary" />
+              Search & Filter Expenses
+            </CardTitle>
+            <CardDescription>Refine your expense list using the filters below.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ExpenseFilters
+              categories={userCategories}
+              paymentMethods={userPaymentMethods}
+              onApplyFilters={handleApplyFilters}
+              initialFilters={activeFilters}
+            />
+          </CardContent>
+        </Card>
 
-      <Card className="shadow-xl mt-6">
-        <CardHeader>
-          <CardTitle>Filtered Results</CardTitle>
-          <CardDescription>
-            Showing {filteredExpenses.length} of {allUserExpenses.length} expenses.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ExpenseList 
-            expenses={filteredExpenses} 
-            categories={userCategories} 
-            paymentMethods={userPaymentMethods}
-            currencies={userCurrencies}
-            onEdit={handleEdit} 
-            onDelete={(expenseId) => { /* Deletion logic */
-                 console.log("Delete requested for: ", expenseId);
-                 toast({title: "Info", description: "Deletion from this view not fully implemented."});
-            }} 
-            sourcePageIdentifier="search"
-          />
-        </CardContent>
-      </Card>
-
-      <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
-        setIsFormOpen(isOpen);
-        if (!isOpen) setEditingExpense(undefined);
-      }}>
-        <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Expense</DialogTitle>
-            <DialogDescription>
-              Update the details of your expense.
-            </DialogDescription>
-          </DialogHeader>
-          {editingExpense && (
-            <ExpenseForm
+        <Card className="shadow-xl mt-6">
+          <CardHeader>
+            <CardTitle>Filtered Results</CardTitle>
+            <CardDescription>
+              Showing {filteredExpenses.length} of {allUserExpenses.length} expenses.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ExpenseList
+              expenses={filteredExpenses}
               categories={userCategories}
               paymentMethods={userPaymentMethods}
               currencies={userCurrencies}
-              onSubmit={handleUpdateExpense}
-              initialData={editingExpense}
+              onEdit={handleEdit}
+              onDelete={handleDeleteExpenseClick}
+              sourcePageIdentifier="search"
             />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+          </CardContent>
+        </Card>
+
+        <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
+          setIsFormOpen(isOpen);
+          if (!isOpen) setEditingExpense(undefined);
+        }}>
+          <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Expense</DialogTitle>
+              <DialogDescription>
+                Update the details of your expense.
+              </DialogDescription>
+            </DialogHeader>
+            {editingExpense && (
+              <ExpenseForm
+                categories={userCategories}
+                paymentMethods={userPaymentMethods}
+                currencies={userCurrencies}
+                onSubmit={handleUpdateExpense}
+                initialData={editingExpense}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this expense.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setExpenseToDeleteId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteExpense}>
+              Yes, delete expense
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -13,7 +13,7 @@ import Image from "next/image";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { getMonth, getYear, isSameMonth, isSameYear, format } from 'date-fns';
+import { getMonth, getYear, isSameMonth, isSameYear, format, startOfWeek, endOfWeek, isWithinInterval, isValid } from 'date-fns';
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 
@@ -68,10 +68,11 @@ export default function DashboardPage() {
   const [totalExpensesAllTime, setTotalExpensesAllTimeState] = useState<number>(0);
   const [netBalance, setNetBalance] = useState<number>(0);
   const [baseCurrencySymbol, setBaseCurrencySymbol] = useState<string>("$");
+  const [transactionsThisWeekCount, setTransactionsThisWeekCount] = useState<number>(0);
 
   // Firestore-backed data states
   const [userCategoriesState, setUserCategoriesState] = useState<Category[]>([]);
-  const [userExpensesState, setUserExpensesState] = useState<Expense[]>([]);
+  const [userExpensesState, setUserExpensesState] = useState<Expense[]>([]); // Keep this for other charts/calculations
   const [userIncomesState, setUserIncomesState] = useState<Income[]>([]);
   const [userCurrenciesState, setUserCurrenciesState] = useState<Currency[]>([]);
   const [userExchangeRatesState, setUserExchangeRatesState] = useState<ExchangeRate[]>([]);
@@ -105,7 +106,7 @@ export default function DashboardPage() {
         getSavingGoalsCol(user.uid),
       ]);
 
-      setUserExpensesState(fetchedExpenses);
+      setUserExpensesState(fetchedExpenses); // Still set the full list for other components
       setUserIncomesState(fetchedIncomes);
       setUserCategoriesState(fetchedCategories);
       setUserCurrenciesState(fetchedCurrencies);
@@ -140,6 +141,16 @@ export default function DashboardPage() {
         .filter(exp => isSameMonth(new Date(exp.date), now) && isSameYear(new Date(exp.date), now))
         .reduce((sum, exp) => sum + convertToBaseCurrency(exp.amount, exp.currencyId, fetchedExchangeRates), 0);
       setTotalSpentThisMonthValue(spentThisMonth);
+      
+      // Calculate transactions this week
+      const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Assuming week starts on Monday
+      const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 });
+      const expensesThisWeek = fetchedExpenses.filter(exp => {
+        const expDate = new Date(exp.date);
+        return isValid(expDate) && isWithinInterval(expDate, { start: startOfCurrentWeek, end: endOfCurrentWeek });
+      });
+      setTransactionsThisWeekCount(expensesThisWeek.length);
+
 
       let isOverBudget = false;
       let budgetsWithinLimit = 0;
@@ -223,9 +234,9 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Recent Transactions"
-          value={`${userExpensesState.length} Total`}
+          value={`${transactionsThisWeekCount} This Week`}
           icon={ListChecks}
-          description="View all transactions"
+          description="Transactions this week"
           href="/expenses"
         />
       </div>
@@ -383,5 +394,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     

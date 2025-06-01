@@ -17,17 +17,27 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { getMonth, getYear, getISOWeek, startOfWeek, endOfWeek, format, isValid } from 'date-fns';
-import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc } from "@/lib/services/expense-service";
+import { getExpensesCol, updateExpenseDoc, deleteExpenseDoc } from "@/lib/services/expense-service";
 import { getCategoriesCol } from "@/lib/services/category-service";
 import { getPaymentMethodsCol } from "@/lib/services/payment-method-service";
 import { getCurrenciesCol } from "@/lib/services/currency-service";
 
 interface ExpensesByWeek {
-  [weekKey: string]: { 
+  [weekKey: string]: {
     weekLabel: string;
     expenses: Expense[];
     weekNumber: number;
@@ -38,7 +48,7 @@ interface ExpensesByWeek {
 const groupExpensesByWeek = (expensesForMonth: Expense[], targetYear: number, targetMonth: number): ExpensesByWeek => {
   const grouped: ExpensesByWeek = {};
   expensesForMonth.forEach(expense => {
-    if (!isValid(new Date(expense.date))) return; 
+    if (!isValid(new Date(expense.date))) return;
     if (getYear(new Date(expense.date)) !== targetYear || getMonth(new Date(expense.date)) !== targetMonth) {
         return;
     }
@@ -47,7 +57,7 @@ const groupExpensesByWeek = (expensesForMonth: Expense[], targetYear: number, ta
     const weekKey = `${expenseYear}-${weekNumber}`;
 
     if (!grouped[weekKey]) {
-      const firstDayOfWeek = startOfWeek(new Date(expense.date), { weekStartsOn: 1 }); 
+      const firstDayOfWeek = startOfWeek(new Date(expense.date), { weekStartsOn: 1 });
       const lastDayOfWeek = endOfWeek(new Date(expense.date), { weekStartsOn: 1 });
       grouped[weekKey] = {
         weekLabel: `Week ${weekNumber} (${format(firstDayOfWeek, 'MMM d')} - ${format(lastDayOfWeek, 'MMM d, yyyy')})`,
@@ -70,7 +80,7 @@ export default function MonthlyExpensesOverviewPage() {
   const params = useParams();
   const router = useRouter();
   const year = parseInt(params.year as string);
-  const month = parseInt(params.month as string) - 1; 
+  const month = parseInt(params.month as string) - 1;
 
   const [monthlyExpenses, setMonthlyExpenses] = useState<Expense[]>([]);
   const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -83,6 +93,9 @@ export default function MonthlyExpensesOverviewPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const { toast } = useToast();
 
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
+  const [expenseToDeleteId, setExpenseToDeleteId] = useState<string | null>(null);
+
   const fetchPageData = useCallback(async () => {
     if (!user || isNaN(year) || isNaN(month) || month < 0 || month > 11) {
       setIsLoading(false);
@@ -93,9 +106,9 @@ export default function MonthlyExpensesOverviewPage() {
     setIsLoading(true);
     try {
       const [
-        allUserExpenses, 
-        fetchedUserCategories, 
-        fetchedUserPaymentMethods, 
+        allUserExpenses,
+        fetchedUserCategories,
+        fetchedUserPaymentMethods,
         fetchedUserCurrencies
       ] = await Promise.all([
         getExpensesCol(user.uid),
@@ -108,7 +121,7 @@ export default function MonthlyExpensesOverviewPage() {
       setUserPaymentMethods(fetchedUserPaymentMethods);
       setUserCurrencies(fetchedUserCurrencies);
 
-      const filtered = allUserExpenses.filter(exp => 
+      const filtered = allUserExpenses.filter(exp =>
         isValid(new Date(exp.date)) &&
         getYear(new Date(exp.date)) === year &&
         getMonth(new Date(exp.date)) === month
@@ -145,13 +158,32 @@ export default function MonthlyExpensesOverviewPage() {
   const handleUpdateExpense = async (data: Omit<Expense, "id">) => {
     if (!user || !editingExpense) return;
     try {
-      await updateFirestoreExpenseDoc(user.uid, editingExpense.id, data);
+      await updateExpenseDoc(user.uid, editingExpense.id, data);
       toast({ title: "Expense Updated", description: `"${data.description}" has been updated.` });
-      fetchPageData(); // Re-fetch all data
+      fetchPageData();
       setEditingExpense(undefined);
       setIsFormOpen(false);
     } catch (error: any) {
         toast({title: "Error", description: error.message || "Could not update expense.", variant: "destructive"});
+    }
+  };
+
+  const handleDeleteExpenseClick = (expenseId: string) => {
+    setExpenseToDeleteId(expenseId);
+    setIsConfirmDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDeleteExpense = async () => {
+    if (!user || !expenseToDeleteId) return;
+    try {
+      await deleteExpenseDoc(user.uid, expenseToDeleteId);
+      toast({ title: "Expense Deleted", description: "The expense has been removed.", variant: "destructive" });
+      fetchPageData(); // Re-fetch to update list
+    } catch (error: any) {
+      toast({ title: "Error Deleting Expense", description: error.message || "Could not delete expense.", variant: "destructive" });
+    } finally {
+      setIsConfirmDeleteDialogOpen(false);
+      setExpenseToDeleteId(null);
     }
   };
 
@@ -160,90 +192,102 @@ export default function MonthlyExpensesOverviewPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Button variant="outline" onClick={() => router.back()} className="mb-4 shadow-sm">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back
-      </Button>
-      <Card className="shadow-xl">
-        <CardHeader>
-          <CardTitle className="text-2xl">{pageTitle}</CardTitle>
-          <CardDescription>View your expenses for this period.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-4">
-              <TabsTrigger value="monthly">Monthly View</TabsTrigger>
-              <TabsTrigger value="weekly">Weekly View</TabsTrigger>
-              <TabsTrigger value="yearly" asChild>
-                <Link href={`/expenses/overview/${year}`}>Yearly View ({year})</Link>
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="monthly">
-              <ExpenseList 
-                expenses={monthlyExpenses} 
-                categories={userCategories} 
-                paymentMethods={userPaymentMethods}
-                currencies={userCurrencies} 
-                onEdit={handleEdit} 
-                onDelete={(expenseId) => { /* Deletion logic */
-                     console.log("Delete requested for: ", expenseId);
-                     toast({title: "Info", description: "Deletion from this view not fully implemented."});
-                }}  
-                sourcePageIdentifier="overview"
-              />
-            </TabsContent>
-            <TabsContent value="weekly">
-              {Object.keys(weeklyGroupedExpenses).length > 0 ? (
-                Object.entries(weeklyGroupedExpenses).map(([weekKey, weekData]) => (
-                  <div key={weekKey} className="mb-6">
-                    <h3 className="text-lg font-semibold mb-2 text-primary">{weekData.weekLabel}</h3>
-                    <ExpenseList 
-                      expenses={weekData.expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())} 
-                      categories={userCategories} 
-                      paymentMethods={userPaymentMethods}
-                      currencies={userCurrencies} 
-                      onEdit={handleEdit} 
-                      onDelete={(expenseId) => { /* Deletion logic */ 
-                        console.log("Delete requested for: ", expenseId);
-                        toast({title: "Info", description: "Deletion from this view not fully implemented."});
-                      }} 
-                      sourcePageIdentifier="overview"
-                    />
-                  </div>
-                ))
-              ) : (
-                 activeTab === 'weekly' && !isLoading && <p className="text-muted-foreground text-center py-4">No expenses to display for this view.</p>
-              )}
-            </TabsContent>
-          </Tabs>
-           {monthlyExpenses.length === 0 && activeTab === 'monthly' && !isLoading && (
-             <p className="text-muted-foreground text-center py-4">No expenses recorded for this month.</p>
-           )}
-        </CardContent>
-      </Card>
+    <>
+      <div className="space-y-6">
+        <Button variant="outline" onClick={() => router.back()} className="mb-4 shadow-sm">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </Button>
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-2xl">{pageTitle}</CardTitle>
+            <CardDescription>View your expenses for this period.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-4">
+                <TabsTrigger value="monthly">Monthly View</TabsTrigger>
+                <TabsTrigger value="weekly">Weekly View</TabsTrigger>
+                <TabsTrigger value="yearly" asChild>
+                  <Link href={`/expenses/overview/${year}`}>Yearly View ({year})</Link>
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="monthly">
+                <ExpenseList
+                  expenses={monthlyExpenses}
+                  categories={userCategories}
+                  paymentMethods={userPaymentMethods}
+                  currencies={userCurrencies}
+                  onEdit={handleEdit}
+                  onDelete={handleDeleteExpenseClick}
+                  sourcePageIdentifier="overview"
+                />
+              </TabsContent>
+              <TabsContent value="weekly">
+                {Object.keys(weeklyGroupedExpenses).length > 0 ? (
+                  Object.entries(weeklyGroupedExpenses).map(([weekKey, weekData]) => (
+                    <div key={weekKey} className="mb-6">
+                      <h3 className="text-lg font-semibold mb-2 text-primary">{weekData.weekLabel}</h3>
+                      <ExpenseList
+                        expenses={weekData.expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())}
+                        categories={userCategories}
+                        paymentMethods={userPaymentMethods}
+                        currencies={userCurrencies}
+                        onEdit={handleEdit}
+                        onDelete={handleDeleteExpenseClick}
+                        sourcePageIdentifier="overview"
+                      />
+                    </div>
+                  ))
+                ) : (
+                   activeTab === 'weekly' && !isLoading && <p className="text-muted-foreground text-center py-4">No expenses to display for this view.</p>
+                )}
+              </TabsContent>
+            </Tabs>
+             {monthlyExpenses.length === 0 && activeTab === 'monthly' && !isLoading && (
+               <p className="text-muted-foreground text-center py-4">No expenses recorded for this month.</p>
+             )}
+          </CardContent>
+        </Card>
 
-      <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
-        setIsFormOpen(isOpen);
-        if (!isOpen) setEditingExpense(undefined);
-      }}>
-        <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Expense</DialogTitle>
-            <DialogDescription>
-              Update the details of your expense.
-            </DialogDescription>
-          </DialogHeader>
-          {editingExpense && (
-            <ExpenseForm
-              categories={userCategories}
-              paymentMethods={userPaymentMethods}
-              currencies={userCurrencies}
-              onSubmit={handleUpdateExpense}
-              initialData={editingExpense}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+        <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
+          setIsFormOpen(isOpen);
+          if (!isOpen) setEditingExpense(undefined);
+        }}>
+          <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Expense</DialogTitle>
+              <DialogDescription>
+                Update the details of your expense.
+              </DialogDescription>
+            </DialogHeader>
+            {editingExpense && (
+              <ExpenseForm
+                categories={userCategories}
+                paymentMethods={userPaymentMethods}
+                currencies={userCurrencies}
+                onSubmit={handleUpdateExpense}
+                initialData={editingExpense}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this expense.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setExpenseToDeleteId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteExpense}>
+              Yes, delete expense
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

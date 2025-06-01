@@ -17,6 +17,16 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
@@ -39,7 +49,7 @@ import {
 import { convertToBaseCurrency, BASE_CURRENCY_ID, getCurrencySymbol } from "@/lib/currency-utils";
 import { cn } from "@/lib/utils";
 import { getAllDescendantCategoryIds, getCategoryPath, type CategoryPathPart } from "@/lib/category-utils";
-import { getExpensesCol, updateExpenseDoc as updateFirestoreExpenseDoc, deleteExpenseDoc as deleteFirestoreExpenseDoc } from "@/lib/services/expense-service";
+import { getExpensesCol, updateExpenseDoc, deleteExpenseDoc } from "@/lib/services/expense-service";
 import { getCategoriesCol } from "@/lib/services/category-service";
 import { getPaymentMethodsCol } from "@/lib/services/payment-method-service";
 import { getCurrenciesCol } from "@/lib/services/currency-service";
@@ -49,9 +59,9 @@ import { getExchangeRatesCol } from "@/lib/services/exchange-rate-service";
 type FilterPeriod = "all" | "year" | "month" | "week";
 
 const sumAmountsInBase = (expensesToSum: Expense[], rates: ExchangeRate[]): number => {
-  if (!rates || rates.length === 0) { 
+  if (!rates || rates.length === 0) {
     console.warn("Exchange rates not available for summing amounts in base currency.");
-    return expensesToSum.reduce((acc, expense) => acc + expense.amount, 0); 
+    return expensesToSum.reduce((acc, expense) => acc + expense.amount, 0);
   }
   return expensesToSum.reduce((acc, expense) => {
     return acc + convertToBaseCurrency(expense.amount, expense.currencyId, rates);
@@ -70,26 +80,28 @@ export default function CategoryExpensesPage() {
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([]);
   const [currentCategory, setCurrentCategory] = useState<Category | undefined>(undefined);
   const [categoryPath, setCategoryPath] = useState<CategoryPathPart[]>([]);
-  
+
   const [userCategories, setUserCategories] = useState<Category[]>([]);
   const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>([]);
   const [userCurrencies, setUserCurrencies] = useState<Currency[]>([]);
-  const [userExchangeRates, setUserExchangeRates] = useState<ExchangeRate[]>([]); 
+  const [userExchangeRates, setUserExchangeRates] = useState<ExchangeRate[]>([]);
 
   const [activeTab, setActiveTab] = useState<FilterPeriod>("all");
-  const [baseCurrencySymbol, setBaseCurrencySymbolState] = useState<string>('$'); 
+  const [baseCurrencySymbol, setBaseCurrencySymbolState] = useState<string>('$');
   const [comparisonText, setComparisonText] = useState<string | null>(null);
   const [comparisonTextColor, setComparisonTextColor] = useState<string>("text-muted-foreground");
 
   const [backButtonText, setBackButtonText] = useState("Back");
-  const [backButtonAction, setBackButtonAction] = useState<() => void>(() => () => {}); 
+  const [backButtonAction, setBackButtonAction] = useState<() => void>(() => () => {});
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
 
-  // Effect for setting back button text and action
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
+  const [expenseToDeleteId, setExpenseToDeleteId] = useState<string | null>(null);
+
    useEffect(() => {
     let newBackButtonText = "Back";
     const navigateBack = () => {
@@ -98,7 +110,7 @@ export default function CategoryExpensesPage() {
       else if (fromQueryParam === "expenses") { newBackButtonText = "Back to Expenses"; router.push("/expenses");}
       else if (fromQueryParam === "search") { newBackButtonText = "Back to Search Results"; router.push("/expenses/search");}
       else if (fromQueryParam === "categories") { newBackButtonText = "Back to Categories"; router.push("/categories");}
-      else if (fromQueryParam === "overview") { newBackButtonText = "Back to Overview"; router.back(); } // Overview can be multiple pages
+      else if (fromQueryParam === "overview") { newBackButtonText = "Back to Overview"; router.back(); }
       else if (fromQueryParam === "payment-method") { newBackButtonText = "Back to Payment Method View"; router.back(); }
       else { router.back(); }
     };
@@ -115,10 +127,10 @@ export default function CategoryExpensesPage() {
     setIsLoading(true);
     try {
       const [
-        fetchedUserCategories, 
-        fetchedUserExpenses, 
-        fetchedUserPaymentMethods, 
-        fetchedUserCurrencies, 
+        fetchedUserCategories,
+        fetchedUserExpenses,
+        fetchedUserPaymentMethods,
+        fetchedUserCurrencies,
         fetchedUserExchangeRates
       ] = await Promise.all([
         getCategoriesCol(user.uid),
@@ -153,7 +165,7 @@ export default function CategoryExpensesPage() {
     } finally {
         setIsLoading(false);
     }
-  }, [user, categoryIdFromUrl, toast]); 
+  }, [user, categoryIdFromUrl, toast]);
 
   useEffect(() => {
     if(user && categoryIdFromUrl){
@@ -188,8 +200,8 @@ export default function CategoryExpensesPage() {
       previousPeriodStart = startOfYear(subYears(now, 1));
       previousPeriodEnd = endOfYear(subYears(now, 1));
     }
-    
-    if(currentPeriodStart && currentPeriodEnd) { 
+
+    if(currentPeriodStart && currentPeriodEnd) {
         newFilteredExpenses = allExpensesForCategoryAndDescendants.filter(exp =>
             isValid(new Date(exp.date)) && isWithinInterval(new Date(exp.date), { start: currentPeriodStart!, end: currentPeriodEnd! })
         );
@@ -210,7 +222,7 @@ export default function CategoryExpensesPage() {
 
     const currentTotalInBase = sumAmountsInBase(currentPeriodExpenses, userExchangeRates);
     const previousTotalInBase = sumAmountsInBase(previousPeriodExpenses, userExchangeRates);
-    
+
     let message: string | null = null;
     let textColor = "text-muted-foreground";
     const periodName = activeTab;
@@ -218,9 +230,9 @@ export default function CategoryExpensesPage() {
     if (previousTotalInBase > 0) {
       const percentageChange = ((currentTotalInBase - previousTotalInBase) / previousTotalInBase) * 100;
       const trendWord = percentageChange > 0 ? "more" : percentageChange < 0 ? "less" : "the same amount as";
-      
-      textColor = percentageChange > 0 ? "text-destructive" : 
-                  percentageChange < 0 ? "text-green-600 dark:text-green-500" : 
+
+      textColor = percentageChange > 0 ? "text-destructive" :
+                  percentageChange < 0 ? "text-green-600 dark:text-green-500" :
                   "text-sky-600 dark:text-sky-500";
 
       if (percentageChange !== 0) {
@@ -229,10 +241,10 @@ export default function CategoryExpensesPage() {
         message = `You spent ${baseCurrencySymbol}${currentTotalInBase.toFixed(2)} this ${periodName}, which is the same as the previous ${periodName}.`;
          textColor = "text-foreground";
       }
-    } else if (currentTotalInBase > 0) { 
+    } else if (currentTotalInBase > 0) {
       message = `You spent ${baseCurrencySymbol}${currentTotalInBase.toFixed(2)} this ${periodName}. No spending recorded in the previous ${periodName}.`;
       textColor = "text-sky-600 dark:text-sky-500";
-    } else { 
+    } else {
       message = `No spending recorded for this category (including sub-categories) in this ${periodName} or the previous one.`;
       textColor = "text-muted-foreground";
     }
@@ -249,24 +261,32 @@ export default function CategoryExpensesPage() {
   const handleUpdateExpense = async (data: Omit<Expense, "id">) => {
     if (!user || !editingExpense) return;
     try {
-      await updateFirestoreExpenseDoc(user.uid, editingExpense.id, data);
+      await updateExpenseDoc(user.uid, editingExpense.id, data);
       toast({ title: "Expense Updated", description: `"${data.description}" has been updated.` });
-      fetchPageData(); 
+      fetchPageData();
       setEditingExpense(undefined);
       setIsFormOpen(false);
     } catch (error: any) {
         toast({title: "Error", description: error.message || "Could not update expense.", variant: "destructive"});
     }
   };
-  
-  const handleDeleteExpense = async (expenseId: string) => {
-    if (!user) return;
+
+  const handleDeleteExpenseClick = (expenseId: string) => {
+    setExpenseToDeleteId(expenseId);
+    setIsConfirmDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDeleteExpense = async () => {
+    if (!user || !expenseToDeleteId) return;
     try {
-      await deleteFirestoreExpenseDoc(user.uid, expenseId);
+      await deleteExpenseDoc(user.uid, expenseToDeleteId);
       toast({ title: "Expense Deleted", description: "The expense has been removed.", variant: "destructive" });
-      fetchPageData(); 
+      fetchPageData();
     } catch (error: any) {
       toast({ title: "Error Deleting Expense", description: error.message || "Could not delete expense.", variant: "destructive" });
+    } finally {
+      setIsConfirmDeleteDialogOpen(false);
+      setExpenseToDeleteId(null);
     }
   };
 
@@ -295,8 +315,8 @@ export default function CategoryExpensesPage() {
         {categoryPath.map((part, index) => (
           <React.Fragment key={part.id}>
             {index < categoryPath.length - 1 ? (
-              <Link 
-                href={`/expenses/category/${part.id}${fromQueryParam ? `?from=${fromQueryParam}` : ''}`} 
+              <Link
+                href={`/expenses/category/${part.id}${fromQueryParam ? `?from=${fromQueryParam}` : ''}`}
                 className="hover:underline text-primary hover:text-primary/80"
               >
                 {part.name}
@@ -316,72 +336,89 @@ export default function CategoryExpensesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Button variant="outline" onClick={backButtonAction} className="mb-4 shadow-sm">
-        <ArrowLeft className="mr-2 h-4 w-4" /> {backButtonText}
-      </Button>
-      <Card className="shadow-xl">
-        <CardHeader>
-          <CardTitle className="text-2xl">{renderPageTitle()}</CardTitle>
-          <CardDescription>{getTabDescription()}</CardDescription>
-           {comparisonText && (
-            <p className={cn("text-sm mt-2 font-medium", comparisonTextColor)}>
-              {comparisonText}
-            </p>
-          )}
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FilterPeriod)} className="w-full">
-            <TabsList className="grid w-full h-auto grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-4 mb-4">
-              <TabsTrigger value="all">All Time</TabsTrigger>
-              <TabsTrigger value="year">This Year</TabsTrigger>
-              <TabsTrigger value="month">This Month</TabsTrigger>
-              <TabsTrigger value="week">This Week</TabsTrigger>
-            </TabsList>
-            
-            {(["all", "year", "month", "week"] as FilterPeriod[]).map((period) => (
-              <TabsContent key={period} value={period}>
-                <ExpenseList
-                  expenses={filteredExpenses} 
-                  categories={userCategories} 
-                  paymentMethods={userPaymentMethods}
-                  currencies={userCurrencies}
-                  onEdit={handleEdit} 
-                  onDelete={handleDeleteExpense} 
-                  sourcePageIdentifier="category" 
-                />
-              </TabsContent>
-            ))}
-          </Tabs>
-           {filteredExpenses.length === 0 && !isLoading && (
-            <p className="text-muted-foreground text-center py-4">No expenses found for this category (including sub-categories) in the selected period.</p>
-          )}
-        </CardContent>
-      </Card>
+    <>
+      <div className="space-y-6">
+        <Button variant="outline" onClick={backButtonAction} className="mb-4 shadow-sm">
+          <ArrowLeft className="mr-2 h-4 w-4" /> {backButtonText}
+        </Button>
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-2xl">{renderPageTitle()}</CardTitle>
+            <CardDescription>{getTabDescription()}</CardDescription>
+             {comparisonText && (
+              <p className={cn("text-sm mt-2 font-medium", comparisonTextColor)}>
+                {comparisonText}
+              </p>
+            )}
+          </CardHeader>
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FilterPeriod)} className="w-full">
+              <TabsList className="grid w-full h-auto grid-cols-1 gap-1 sm:flex sm:h-10 sm:w-auto mb-4">
+                <TabsTrigger value="all">All Time</TabsTrigger>
+                <TabsTrigger value="year">This Year</TabsTrigger>
+                <TabsTrigger value="month">This Month</TabsTrigger>
+                <TabsTrigger value="week">This Week</TabsTrigger>
+              </TabsList>
 
-      <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
-        setIsFormOpen(isOpen);
-        if (!isOpen) setEditingExpense(undefined);
-      }}>
-        <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Expense</DialogTitle>
-            <DialogDescription>
-              Update the details of your expense.
-            </DialogDescription>
-          </DialogHeader>
-          {editingExpense && (
-            <ExpenseForm
-              categories={userCategories}
-              paymentMethods={userPaymentMethods}
-              currencies={userCurrencies}
-              onSubmit={handleUpdateExpense}
-              initialData={editingExpense}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+              {(["all", "year", "month", "week"] as FilterPeriod[]).map((period) => (
+                <TabsContent key={period} value={period}>
+                  <ExpenseList
+                    expenses={filteredExpenses}
+                    categories={userCategories}
+                    paymentMethods={userPaymentMethods}
+                    currencies={userCurrencies}
+                    onEdit={handleEdit}
+                    onDelete={handleDeleteExpenseClick}
+                    sourcePageIdentifier="category"
+                  />
+                </TabsContent>
+              ))}
+            </Tabs>
+             {filteredExpenses.length === 0 && !isLoading && (
+              <p className="text-muted-foreground text-center py-4">No expenses found for this category (including sub-categories) in the selected period.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
+          setIsFormOpen(isOpen);
+          if (!isOpen) setEditingExpense(undefined);
+        }}>
+          <DialogContent className="sm:max-w-[525px] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Expense</DialogTitle>
+              <DialogDescription>
+                Update the details of your expense.
+              </DialogDescription>
+            </DialogHeader>
+            {editingExpense && (
+              <ExpenseForm
+                categories={userCategories}
+                paymentMethods={userPaymentMethods}
+                currencies={userCurrencies}
+                onSubmit={handleUpdateExpense}
+                initialData={editingExpense}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this expense.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setExpenseToDeleteId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteExpense}>
+              Yes, delete expense
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
-    
