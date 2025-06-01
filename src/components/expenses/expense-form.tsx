@@ -276,7 +276,6 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
                       disabled={(date) =>
                         date > new Date() || date < new Date("1900-01-01")
                       }
-                      initialFocus
                     />
                   </PopoverContent>
                 </Popover>
@@ -403,7 +402,6 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
                         field.onChange(selectedDate);
                         setNextDueDatePopoverOpen(false);
                       }}
-                      initialFocus
                     />
                   </PopoverContent>
                 </Popover>

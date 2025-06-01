@@ -204,11 +204,11 @@ export default function MonthlyExpensesOverviewPage() {
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-4">
-                <TabsTrigger value="monthly">Monthly View</TabsTrigger>
-                <TabsTrigger value="weekly">Weekly View</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-3 gap-1 sm:gap-2 mb-4">
+                <TabsTrigger value="monthly">Month</TabsTrigger>
+                <TabsTrigger value="weekly">Week</TabsTrigger>
                 <TabsTrigger value="yearly" asChild>
-                  <Link href={`/expenses/overview/${year}`}>Yearly View ({year})</Link>
+                  <Link href={`/expenses/overview/${year}`}>Year ({year})</Link>
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="monthly">
@@ -291,3 +291,4 @@ export default function MonthlyExpensesOverviewPage() {
     </>
   );
 }
+

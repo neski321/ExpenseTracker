@@ -64,16 +64,13 @@ export default function DashboardPage() {
   const [budgetStatusIcon, setBudgetStatusIcon] = useState<React.ElementType>(TrendingUp);
   const [budgetStatusIconColor, setBudgetStatusIconColor] = useState<string | undefined>(undefined);
 
-  const [totalIncome, setTotalIncome] = useState<number>(0);
-  const [totalExpensesAllTime, setTotalExpensesAllTimeState] = useState<number>(0);
-  const [netBalance, setNetBalance] = useState<number>(0);
   const [baseCurrencySymbol, setBaseCurrencySymbol] = useState<string>("$");
   const [transactionsThisWeekCount, setTransactionsThisWeekCount] = useState<number>(0);
 
   // Firestore-backed data states
   const [userCategoriesState, setUserCategoriesState] = useState<Category[]>([]);
-  const [userExpensesState, setUserExpensesState] = useState<Expense[]>([]); // Keep this for other charts/calculations
-  const [userIncomesState, setUserIncomesState] = useState<Income[]>([]);
+  const [userExpensesState, setUserExpensesState] = useState<Expense[]>([]);
+  const [userIncomesState, setUserIncomesState] = useState<Income[]>([]); // Still needed for potential future dashboard elements
   const [userCurrenciesState, setUserCurrenciesState] = useState<Currency[]>([]);
   const [userExchangeRatesState, setUserExchangeRatesState] = useState<ExchangeRate[]>([]);
   const [userBudgetGoalsState, setUserBudgetGoalsState] = useState<BudgetGoalStorage[]>([]);
@@ -90,7 +87,7 @@ export default function DashboardPage() {
     try {
       const [
         fetchedExpenses,
-        fetchedIncomes,
+        fetchedIncomes, // Keep fetching incomes if other dashboard parts might use it
         fetchedCategories,
         fetchedCurrencies,
         fetchedExchangeRates,
@@ -106,8 +103,8 @@ export default function DashboardPage() {
         getSavingGoalsCol(user.uid),
       ]);
 
-      setUserExpensesState(fetchedExpenses); // Still set the full list for other components
-      setUserIncomesState(fetchedIncomes);
+      setUserExpensesState(fetchedExpenses);
+      setUserIncomesState(fetchedIncomes); // Set for potential use
       setUserCategoriesState(fetchedCategories);
       setUserCurrenciesState(fetchedCurrencies);
       setUserExchangeRatesState(fetchedExchangeRates);
@@ -121,17 +118,6 @@ export default function DashboardPage() {
       setUserSavingGoalsState(sortedSavingGoals);
       setBaseCurrencySymbol(getCurrencySymbol(BASE_CURRENCY_ID, fetchedCurrencies));
 
-      const calculatedTotalIncome = fetchedIncomes.reduce((sum, income) => {
-        return sum + convertToBaseCurrency(income.amount, income.currencyId, fetchedExchangeRates);
-      }, 0);
-      const calculatedTotalExpenses = fetchedExpenses.reduce((sum, expense) => {
-        return sum + convertToBaseCurrency(expense.amount, expense.currencyId, fetchedExchangeRates);
-      }, 0);
-
-      setTotalIncome(calculatedTotalIncome);
-      setTotalExpensesAllTimeState(calculatedTotalExpenses);
-      setNetBalance(calculatedTotalIncome - calculatedTotalExpenses);
-
       const now = new Date();
       const currentYear = getYear(now);
       const currentMonthIndex = getMonth(now);
@@ -142,15 +128,13 @@ export default function DashboardPage() {
         .reduce((sum, exp) => sum + convertToBaseCurrency(exp.amount, exp.currencyId, fetchedExchangeRates), 0);
       setTotalSpentThisMonthValue(spentThisMonth);
       
-      // Calculate transactions this week
-      const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Assuming week starts on Monday
+      const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); 
       const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 });
       const expensesThisWeek = fetchedExpenses.filter(exp => {
         const expDate = new Date(exp.date);
         return isValid(expDate) && isWithinInterval(expDate, { start: startOfCurrentWeek, end: endOfCurrentWeek });
       });
       setTransactionsThisWeekCount(expensesThisWeek.length);
-
 
       let isOverBudget = false;
       let budgetsWithinLimit = 0;
@@ -199,7 +183,7 @@ export default function DashboardPage() {
     if(user) {
       fetchDashboardData();
     } else {
-      setIsLoading(false); // Ensure loading stops if there's no user
+      setIsLoading(false); 
     }
   }, [user, fetchDashboardData]);
 
@@ -256,56 +240,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Scale className="mr-3 h-6 w-6 text-primary" />
-              All-Time Financial Overview
-            </CardTitle>
-            <CardDescription>
-              Your total income, expenses, and net balance (all figures in {baseCurrencySymbol}). Click on income or expenses to see details.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Link href="/income" className="block rounded-md transition-colors group">
-              <div className="flex justify-between items-center p-3 bg-secondary/30 rounded-md shadow group-hover:bg-secondary/50 cursor-pointer">
-                <div className="flex items-center">
-                  <TrendingUp className="mr-2 h-5 w-5 text-green-600 dark:text-green-500" />
-                  <span className="font-medium">Total Income:</span>
-                </div>
-                <span className="font-semibold text-lg text-green-600 dark:text-green-500">
-                  {baseCurrencySymbol}{totalIncome.toFixed(2)}
-                </span>
-              </div>
-            </Link>
-            <Link href="/expenses" className="block rounded-md transition-colors group">
-              <div className="flex justify-between items-center p-3 bg-secondary/30 rounded-md shadow group-hover:bg-secondary/50 cursor-pointer">
-                <div className="flex items-center">
-                  <TrendingDown className="mr-2 h-5 w-5 text-red-600 dark:text-red-500" />
-                  <span className="font-medium">Total Expenses:</span>
-                </div>
-                <span className="font-semibold text-lg text-red-600 dark:text-red-500">
-                  {baseCurrencySymbol}{totalExpensesAllTime.toFixed(2)}
-                </span>
-              </div>
-            </Link>
-            <Separator />
-            <div className="flex justify-between items-center p-4 bg-card rounded-md border shadow-inner">
-              <div className="flex items-center">
-                <Scale className="mr-2 h-5 w-5 text-blue-600 dark:text-blue-500" />
-                <span className="font-medium text-lg">Net Balance:</span>
-              </div>
-              <span className={cn(
-                "font-bold text-xl",
-                netBalance >= 0 ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500"
-              )}>
-                {baseCurrencySymbol}{netBalance.toFixed(2)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-lg">
+         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center">
                 <PiggyBank className="mr-3 h-6 w-6 text-primary" />
@@ -343,9 +278,6 @@ export default function DashboardPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
-
-       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
@@ -369,20 +301,23 @@ export default function DashboardPage() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+
+       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
             <CardHeader>
             <CardTitle>Financial Tip</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col md:flex-row items-center gap-4">
             <Image
-                src="https://placehold.co/300x200.png"
+                src="https://www.softwaresuggest.com/blog/wp-content/uploads/2024/03/10-money-management-tips-to-improve-your-finances.jpg"
                 alt="Financial Tip Illustration"
                 width={300}
                 height={200}
-                className="rounded-md object-cover"
-                data-ai-hint="finance piggybank"
+                className="rounded-md object-cover w-full md:w-1/3 max-w-[300px] aspect-[3/2]"
+                data-ai-hint="finance money management"
             />
-            <div>
+            <div className="md:pl-4">
                 <p className="text-lg font-semibold mb-2">Automate Your Savings</p>
                 <p className="text-muted-foreground">
                 Set up automatic transfers to your savings account each payday. Even small, consistent contributions can add up significantly over time. This "pay yourself first" strategy ensures you're always working towards your financial goals.
@@ -394,7 +329,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
-
-    
