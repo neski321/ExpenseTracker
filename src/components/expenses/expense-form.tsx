@@ -265,7 +265,7 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
                       </Button>
                     </FormControl>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="center" sideOffset={8}>
+                  <PopoverContent className="w-auto p-0" align="center" side="bottom" sideOffset={8}>
                     <Calendar
                       mode="single"
                       selected={field.value}
@@ -395,7 +395,7 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
                       </Button>
                     </FormControl>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="center" sideOffset={8}>
+                  <PopoverContent className="w-auto p-0" align="center" side="bottom" sideOffset={8}>
                     <Calendar
                       mode="single"
                       selected={field.value}
