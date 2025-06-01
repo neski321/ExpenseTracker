@@ -7,9 +7,9 @@ import { CurrencyList } from "@/components/settings/currency-list";
 import { CurrencyForm } from "@/components/settings/currency-form";
 import { ExchangeRateForm } from "@/components/settings/exchange-rate-form";
 import { UpdateEmailForm } from "@/components/settings/update-email-form";
-import type { Currency, ExchangeRate } from "@/lib/types";
+import type { Currency, ExchangeRate, Income, Expense } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Settings as SettingsIcon, Trash2, UserCog, Edit } from "lucide-react";
+import { PlusCircle, Settings as SettingsIcon, Trash2, UserCog, Edit, Scale, TrendingUp, TrendingDown, Coins, PiggyBank } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE_CURRENCY_ID, getCurrencySymbol } from "@/lib/currency-utils";
+import { BASE_CURRENCY_ID, getCurrencySymbol, convertToBaseCurrency } from "@/lib/currency-utils";
 import {
   addCurrencyDoc,
   getCurrenciesCol,
@@ -47,6 +47,11 @@ import {
 import { seedDefaultUserData } from "@/lib/services/user-service";
 import { db } from '@/lib/firebase';
 import { collection, getDocs, writeBatch, doc, deleteDoc } from 'firebase/firestore';
+import Link from "next/link";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { getIncomesCol } from "@/lib/services/income-service";
+import { getExpensesCol } from "@/lib/services/expense-service";
 
 
 async function deleteAllDocsInUserCollection(userId: string, collectionName: string) {
@@ -83,19 +88,20 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showUpdateEmailForm, setShowUpdateEmailForm] = useState(false);
 
-  // Dialog states for granular clearing
+  const [totalIncome, setTotalIncome] = useState<number>(0);
+  const [totalExpensesAllTime, setTotalExpensesAllTime] = useState<number>(0);
+  const [netBalance, setNetBalance] = useState<number>(0);
+  const [baseCurrencySymbolToShow, setBaseCurrencySymbolToShow] = useState<string>('$');
+
+
   const [isClearCategoriesDialogOpen, setIsClearCategoriesDialogOpen] = useState(false);
   const [isClearingCategories, setIsClearingCategories] = useState(false);
-
   const [isClearBudgetsDialogOpen, setIsClearBudgetsDialogOpen] = useState(false);
   const [isClearingBudgets, setIsClearingBudgets] = useState(false);
-
   const [isClearExpensesDialogOpen, setIsClearExpensesDialogOpen] = useState(false);
   const [isClearingExpenses, setIsClearingExpenses] = useState(false);
-
   const [isClearIncomesDialogOpen, setIsClearIncomesDialogOpen] = useState(false);
   const [isClearingIncomes, setIsClearingIncomes] = useState(false);
-
   const [isClearSavingsDialogOpen, setIsClearSavingsDialogOpen] = useState(false);
   const [isClearingSavings, setIsClearingSavings] = useState(false);
 
@@ -109,12 +115,32 @@ export default function SettingsPage() {
     }
     setIsLoading(true);
     try {
-      const [userCurrencies, userExchangeRates] = await Promise.all([
+      const [
+        userCurrencies, 
+        userExchangeRates,
+        userIncomes,
+        userExpenses
+      ] = await Promise.all([
         getCurrenciesCol(user.uid),
         getExchangeRatesCol(user.uid),
+        getIncomesCol(user.uid),
+        getExpensesCol(user.uid),
       ]);
       setCurrencies(userCurrencies);
       setExchangeRates(userExchangeRates);
+      setBaseCurrencySymbolToShow(getCurrencySymbol(BASE_CURRENCY_ID, userCurrencies));
+
+      const calculatedTotalIncome = userIncomes.reduce((sum, income) => {
+        return sum + convertToBaseCurrency(income.amount, income.currencyId, userExchangeRates);
+      }, 0);
+      const calculatedTotalExpenses = userExpenses.reduce((sum, expense) => {
+        return sum + convertToBaseCurrency(expense.amount, expense.currencyId, userExchangeRates);
+      }, 0);
+
+      setTotalIncome(calculatedTotalIncome);
+      setTotalExpensesAllTime(calculatedTotalExpenses);
+      setNetBalance(calculatedTotalIncome - calculatedTotalExpenses);
+
     } catch (error: any) {
       console.error("Failed to load settings data:", error);
       toast({ title: "Error", description: error.message || "Could not load settings data.", variant: "destructive" });
@@ -134,7 +160,7 @@ export default function SettingsPage() {
   const handleAddCurrency = async (data: Omit<Currency, "id">) => {
     if (!user) return;
     try {
-      const newCurrency = await addCurrencyDoc(user.uid, data ); 
+      const newCurrency = await addCurrencyDoc(user.uid, data as Currency); // Cast as Currency for potential id from seed
       if (newCurrency.id !== BASE_CURRENCY_ID) {
         const existingRate = exchangeRates.find(er => er.currencyId === newCurrency.id);
         if(!existingRate) {
@@ -229,7 +255,7 @@ export default function SettingsPage() {
           duration: 7000,
         });
       }
-      window.location.reload(); 
+      fetchSettingsData(); // Re-fetch all settings page data
     } catch (error: any) {
       console.error(`Error clearing ${itemDisplayName.toLowerCase()}:`, error);
       toast({
@@ -253,7 +279,6 @@ export default function SettingsPage() {
 
 
   const baseCurrency = currencies.find(c => c.id === BASE_CURRENCY_ID);
-  const baseCurrencySymbolToShow = getCurrencySymbol(BASE_CURRENCY_ID, currencies);
 
   return (
     <div className="space-y-6">
@@ -263,7 +288,7 @@ export default function SettingsPage() {
             <SettingsIcon className="mr-3 h-7 w-7 text-primary" />
             <div>
                 <CardTitle className="text-2xl">Settings</CardTitle>
-                <CardDescription>Manage application currencies, account, and data.</CardDescription>
+                <CardDescription>Manage application currencies, account, financial overview, and data.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -294,6 +319,55 @@ export default function SettingsPage() {
             )}
         </CardContent>
       </Card>
+
+      <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Scale className="mr-3 h-6 w-6 text-primary" />
+              All-Time Financial Overview
+            </CardTitle>
+            <CardDescription>
+              Your total income, expenses, and net balance (all figures in {baseCurrencySymbolToShow}). Click on income or expenses to see details.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Link href="/income" className="block rounded-md transition-colors group">
+              <div className="flex justify-between items-center p-3 bg-secondary/30 rounded-md shadow group-hover:bg-secondary/50 cursor-pointer">
+                <div className="flex items-center">
+                  <TrendingUp className="mr-2 h-5 w-5 text-green-600 dark:text-green-500" />
+                  <span className="font-medium">Total Income:</span>
+                </div>
+                <span className="font-semibold text-lg text-green-600 dark:text-green-500">
+                  {baseCurrencySymbolToShow}{totalIncome.toFixed(2)}
+                </span>
+              </div>
+            </Link>
+            <Link href="/expenses" className="block rounded-md transition-colors group">
+              <div className="flex justify-between items-center p-3 bg-secondary/30 rounded-md shadow group-hover:bg-secondary/50 cursor-pointer">
+                <div className="flex items-center">
+                  <TrendingDown className="mr-2 h-5 w-5 text-red-600 dark:text-red-500" />
+                  <span className="font-medium">Total Expenses:</span>
+                </div>
+                <span className="font-semibold text-lg text-red-600 dark:text-red-500">
+                  {baseCurrencySymbolToShow}{totalExpensesAllTime.toFixed(2)}
+                </span>
+              </div>
+            </Link>
+            <Separator />
+            <div className="flex justify-between items-center p-4 bg-card rounded-md border shadow-inner">
+              <div className="flex items-center">
+                <Scale className="mr-2 h-5 w-5 text-blue-600 dark:text-blue-500" />
+                <span className="font-medium text-lg">Net Balance:</span>
+              </div>
+              <span className={cn(
+                "font-bold text-xl",
+                netBalance >= 0 ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500"
+              )}>
+                {baseCurrencySymbolToShow}{netBalance.toFixed(2)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
 
       <Card className="shadow-xl">
         <CardHeader className="flex flex-row items-center justify-between">
@@ -363,7 +437,6 @@ export default function SettingsPage() {
             <CardDescription>Permanently clear specific types of your application data from Firestore.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Clear Categories */}
             <AlertDialog open={isClearCategoriesDialogOpen} onOpenChange={setIsClearCategoriesDialogOpen}>
                 <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full shadow-md" disabled={isClearingCategories || !user}>
@@ -386,7 +459,6 @@ export default function SettingsPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Clear Budget Goals */}
              <AlertDialog open={isClearBudgetsDialogOpen} onOpenChange={setIsClearBudgetsDialogOpen}>
                 <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full shadow-md" disabled={isClearingBudgets || !user}>
@@ -409,7 +481,6 @@ export default function SettingsPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Clear Expenses */}
             <AlertDialog open={isClearExpensesDialogOpen} onOpenChange={setIsClearExpensesDialogOpen}>
                 <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full shadow-md" disabled={isClearingExpenses || !user}>
@@ -432,7 +503,6 @@ export default function SettingsPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Clear Incomes */}
             <AlertDialog open={isClearIncomesDialogOpen} onOpenChange={setIsClearIncomesDialogOpen}>
                 <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full shadow-md" disabled={isClearingIncomes || !user}>
@@ -455,7 +525,6 @@ export default function SettingsPage() {
                 </AlertDialogContent>
             </AlertDialog>
             
-            {/* Clear Saving Goals */}
             <AlertDialog open={isClearSavingsDialogOpen} onOpenChange={setIsClearSavingsDialogOpen}>
                 <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full shadow-md" disabled={isClearingSavings || !user}>
