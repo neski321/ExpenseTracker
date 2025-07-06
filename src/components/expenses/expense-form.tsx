@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { z as zodType } from "zod";
@@ -98,6 +97,30 @@ export function ExpenseForm({ categories, paymentMethods, currencies, onSubmit, 
     return categories.map(cat => ({ id: cat.id, name: cat.name, parentId: cat.parentId }));
   }, [categories]);
 
+  // Reset form when initialData changes (for editing)
+  useEffect(() => {
+    if (initialData) {
+      form.reset({
+        ...initialData,
+        amount: initialData.amount,
+        paymentMethodId: initialData.paymentMethodId || FORM_NO_PAYMENT_METHOD_VALUE,
+        currencyId: initialData.currencyId || BASE_CURRENCY_ID,
+        isSubscription: initialData.isSubscription || false,
+        nextDueDate: initialData.nextDueDate ? new Date(initialData.nextDueDate) : undefined,
+      });
+    } else {
+      form.reset({
+        description: "",
+        amount: 0,
+        date: new Date(),
+        categoryId: "",
+        paymentMethodId: FORM_NO_PAYMENT_METHOD_VALUE,
+        currencyId: BASE_CURRENCY_ID,
+        isSubscription: false,
+        nextDueDate: undefined,
+      });
+    }
+  }, [initialData, form]);
 
   useEffect(() => {
     if (!isSubscription) {

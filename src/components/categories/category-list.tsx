@@ -1,7 +1,6 @@
-
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import type { Category } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, CornerDownRight, Folder, Tag } from "lucide-react";
@@ -9,6 +8,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getLucideIcon } from "@/lib/icon-utils";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface CategoryListItemProps {
   category: Category;
@@ -21,38 +31,64 @@ interface CategoryListItemProps {
 const CategoryListItem: React.FC<CategoryListItemProps> = ({ category, level, onEdit, onDelete, hasChildren }) => {
   const IconComponent = getLucideIcon(category.iconName) || (hasChildren ? Folder : Tag);
   const indentClass = `ml-${level * 6}`;
+  const [showConfirm, setShowConfirm] = useState(false);
 
   return (
-    <Link href={`/expenses/category/${category.id}?from=categories`} className="block group" aria-label={`View expenses for ${category.name}`}>
-      <Card className={cn("shadow-sm group-hover:shadow-lg transition-shadow", level > 0 && "mt-1")}>
-        <CardContent className={cn("p-3 flex items-center justify-between", indentClass)}>
-          <div className="flex items-center gap-3 group-hover:text-primary transition-colors">
-            {level > 0 && <CornerDownRight className="h-4 w-4 text-muted-foreground" />}
-            <IconComponent className="h-5 w-5 text-primary flex-shrink-0 group-hover:text-primary/80 transition-colors" />
-            <span className="font-medium">{category.name}</span>
-          </div>
-          <div className="space-x-1 relative z-20">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(category); }}
-              aria-label={`Edit category ${category.name}`}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(category.id); }}
-              aria-label={`Delete category ${category.name}`}
-              className="text-destructive hover:text-destructive/80"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <>
+      <Link href={`/expenses/category/${category.id}?from=categories`} className="block group" aria-label={`View expenses for ${category.name}`}>
+        <Card className={cn("shadow-sm group-hover:shadow-lg transition-shadow", level > 0 && "mt-1")}>
+          <CardContent className={cn("p-3 flex items-center justify-between", indentClass)}>
+            <div className="flex items-center gap-3 group-hover:text-primary transition-colors">
+              {level > 0 && <CornerDownRight className="h-4 w-4 text-muted-foreground" />}
+              <IconComponent className="h-5 w-5 text-primary flex-shrink-0 group-hover:text-primary/80 transition-colors" />
+              <span className="font-medium">{category.name}</span>
+            </div>
+            <div className="space-x-1 relative z-20">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(category); }}
+                aria-label={`Edit category ${category.name}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowConfirm(true); }}
+                    aria-label={`Delete category ${category.name}`}
+                    className="text-destructive hover:text-destructive/80"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Category</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete <span className="font-semibold">{category.name}</span>?<br/>
+                      <span className="text-destructive font-semibold">This will also delete all sub-categories.</span><br/>
+                      This action cannot be undone. All sub-categories must be removed or reassigned first.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => onDelete(category.id)}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    </>
   );
 };
 

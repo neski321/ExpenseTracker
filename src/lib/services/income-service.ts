@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -34,6 +33,7 @@ export async function addIncomeDoc(
       date: incomeData.date instanceof Date ? Timestamp.fromDate(incomeData.date) : incomeData.date,
     };
     const docRef = await addDoc(getIncomesCollectionRef(userId), dataToSave);
+    await updateDoc(docRef, { id: docRef.id });
     return { 
       id: docRef.id, 
       ...incomeData 

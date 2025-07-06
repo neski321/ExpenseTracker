@@ -1,4 +1,3 @@
-
 import type { LucideIcon } from 'lucide-react';
 
 export interface Category {
@@ -49,13 +48,11 @@ export interface Budget {
 export interface IncomeSource {
   id: string;
   name: string;
-  iconName?: string; // Changed from icon?: LucideIcon
 }
 
 export interface Income {
   id: string;
   date: Date;
-  description: string;
   amount: number;
   currencyId: string;
   incomeSourceId: string;

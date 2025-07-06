@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -9,7 +8,7 @@ import { ExchangeRateForm } from "@/components/settings/exchange-rate-form";
 import { UpdateEmailForm } from "@/components/settings/update-email-form";
 import type { Currency, ExchangeRate, Income, Expense } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Settings as SettingsIcon, Trash2, UserCog, Edit, Scale, TrendingUp, TrendingDown, Coins, PiggyBank } from "lucide-react";
+import { PlusCircle, Settings as SettingsIcon, Trash2, UserCog, Edit, Scale, TrendingUp, TrendingDown, Coins, PiggyBank, Smartphone, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -317,6 +316,33 @@ export default function SettingsPage() {
             {showUpdateEmailForm && (
               <UpdateEmailForm />
             )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-xl">
+        <CardHeader>
+          <div className="flex items-center">
+            <Smartphone className="mr-3 h-6 w-6 text-primary" />
+            <div>
+              <CardTitle className="text-xl">Mobile App</CardTitle>
+              <CardDescription>Download the Android mobile app for on-the-go expense tracking.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <a 
+            href="https://drive.google.com/file/d/1MyROEo0Mfr7NQO-CcdIV6-8DPYDzO6Lj/view?usp=sharing" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-block"
+          >
+            <Button className="shadow-md w-full sm:w-auto">
+              <Download className="mr-2 h-4 w-4" /> Download Android APK
+            </Button>
+          </a>
+          <p className="text-sm text-muted-foreground mt-2">
+            The mobile app syncs with your web account and provides the same features for tracking expenses, income, and budgets on your Android device.
+          </p>
         </CardContent>
       </Card>
 

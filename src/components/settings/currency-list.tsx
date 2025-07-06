@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Currency, ExchangeRate } from "@/lib/types";
@@ -6,6 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, Edit3 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import React, { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface CurrencyListProps {
   currencies: Currency[];
@@ -30,6 +41,8 @@ export function CurrencyList({
   if (currencies.length === 0) {
     return <p className="text-muted-foreground text-center py-8">No currencies found. Add one to get started!</p>;
   }
+
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const getExchangeRateDisplay = (currency: Currency): string => {
     if (currency.id === baseCurrencyId) return `Base Currency (1.00 ${baseCurrencySymbol})`;
@@ -62,15 +75,36 @@ export function CurrencyList({
                  </Button>
               )}
               {currency.id !== baseCurrencyId && currencies.length > 1 && (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => onDeleteCurrency(currency.id)} 
-                  aria-label={`Delete currency ${currency.name}`}
-                  className="text-destructive hover:text-destructive/80"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <AlertDialog open={confirmId === currency.id} onOpenChange={open => setConfirmId(open ? currency.id : null)}>
+                  <AlertDialogTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => setConfirmId(currency.id)} 
+                      aria-label={`Delete currency ${currency.name}`}
+                      className="text-destructive hover:text-destructive/80"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Currency</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete this currency? This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => onDeleteCurrency(currency.id)}
+                      >
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
             </div>
           </CardContent>

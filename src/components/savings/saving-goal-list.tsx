@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { SavingGoal } from "@/lib/types";
@@ -8,6 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, PiggyBank, HelpCircle } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import React, { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface SavingGoalListProps {
   goals: SavingGoal[];
@@ -17,7 +28,8 @@ interface SavingGoalListProps {
 }
 
 export function SavingGoalList({ goals, baseCurrencySymbol, onEdit, onDelete }: SavingGoalListProps) {
-  
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
   if (goals.length === 0) {
     return <p className="text-muted-foreground text-center py-8">No saving goals set yet. Create one to start tracking!</p>;
   }
@@ -26,7 +38,7 @@ export function SavingGoalList({ goals, baseCurrencySymbol, onEdit, onDelete }: 
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {goals.map((goal) => {
         const progressPercent = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-        const IconComponent = goal.icon || HelpCircle; // Default icon if none specified
+        const IconComponent = HelpCircle;
         const isCompleted = goal.currentAmount >= goal.targetAmount;
 
         return (
@@ -46,15 +58,36 @@ export function SavingGoalList({ goals, baseCurrencySymbol, onEdit, onDelete }: 
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => onDelete(goal.id)} 
-                    aria-label={`Delete goal ${goal.name}`}
-                    className="text-destructive hover:text-destructive/80"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <AlertDialog open={confirmId === goal.id} onOpenChange={open => setConfirmId(open ? goal.id : null)}>
+                    <AlertDialogTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => setConfirmId(goal.id)} 
+                        aria-label={`Delete goal ${goal.name}`}
+                        className="text-destructive hover:text-destructive/80"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Savings Goal</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete this savings goal? This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => onDelete(goal.id)}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
               {goal.notes && (

@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -45,8 +44,9 @@ export async function addExpenseDoc(
       // For now, it will be omitted if not a valid Date.
     }
 
-
     const docRef = await addDoc(getExpensesCollectionRef(userId), docData);
+    // Immediately update the document to include the id field
+    await updateDoc(docRef, { id: docRef.id });
     return {
       id: docRef.id,
       ...expenseData

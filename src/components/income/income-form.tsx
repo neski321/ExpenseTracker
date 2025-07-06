@@ -1,4 +1,3 @@
-
 "use client";
 
 import { z } from "zod";
@@ -23,9 +22,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { IncomeSource, Income, Currency } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { BASE_CURRENCY_ID } from "@/lib/currency-utils";
+import { useEffect } from "react";
 
 const incomeFormSchema = z.object({
-  description: z.string().min(2, "Description must be at least 2 characters.").max(100),
   amount: z.coerce.number().positive("Amount must be positive."),
   date: z.date(),
   incomeSourceId: z.string().min(1, "Please select an income source."),
@@ -46,11 +45,11 @@ export function IncomeForm({ incomeSources, currencies, onSubmit, initialData }:
   const form = useForm<IncomeFormValues>({
     resolver: zodResolver(incomeFormSchema),
     defaultValues: initialData ? {
-      ...initialData,
       amount: initialData.amount,
+      date: initialData.date,
+      incomeSourceId: initialData.incomeSourceId,
       currencyId: initialData.currencyId || BASE_CURRENCY_ID,
     } : {
-      description: "",
       amount: 0,
       date: new Date(),
       incomeSourceId: "",
@@ -58,16 +57,34 @@ export function IncomeForm({ incomeSources, currencies, onSubmit, initialData }:
     },
   });
 
+  // Reset form when initialData changes (for editing)
+  useEffect(() => {
+    if (initialData) {
+      form.reset({
+        amount: initialData.amount,
+        date: initialData.date,
+        incomeSourceId: initialData.incomeSourceId,
+        currencyId: initialData.currencyId || BASE_CURRENCY_ID,
+      });
+    } else {
+      form.reset({
+        amount: 0,
+        date: new Date(),
+        incomeSourceId: "",
+        currencyId: BASE_CURRENCY_ID,
+      });
+    }
+  }, [initialData, form]);
+
   function handleSubmit(data: IncomeFormValues) {
     onSubmit(data);
     const selectedCurrency = currencies.find(c => c.id === data.currencyId);
     toast({
       title: initialData ? "Income Updated!" : "Income Added!",
-      description: `${data.description} for ${selectedCurrency?.symbol || ''}${data.amount.toFixed(2)}.`,
+      description: `${selectedCurrency?.symbol || ''}${data.amount.toFixed(2)}.`,
     });
     if (!initialData) {
       form.reset({
-        description: "",
         amount: 0,
         date: new Date(),
         incomeSourceId: "",
@@ -79,19 +96,6 @@ export function IncomeForm({ incomeSources, currencies, onSubmit, initialData }:
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 p-1">
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl>
-                <Input placeholder="e.g., Monthly Salary, Project Payment" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <FormField
             control={form.control}
@@ -104,7 +108,7 @@ export function IncomeForm({ incomeSources, currencies, onSubmit, initialData }:
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground">
                         {currencies.find(c => c.id === form.watch("currencyId"))?.symbol || '$'}
                     </span>
-                    <Input type="number" placeholder="0.00" className="pl-8" {...field} />
+                    <Input type="number" placeholder="0.00" className="pl-8" value={field.value ?? ''} onChange={field.onChange} />
                   </div>
                 </FormControl>
                 <FormMessage />
@@ -124,7 +128,7 @@ export function IncomeForm({ incomeSources, currencies, onSubmit, initialData }:
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {currencies.map((currency) => (
+                    {currencies.filter(currency => currency.id).map((currency) => (
                       <SelectItem key={currency.id} value={currency.id}>
                         {currency.code} ({currency.symbol})
                       </SelectItem>
@@ -190,7 +194,7 @@ export function IncomeForm({ incomeSources, currencies, onSubmit, initialData }:
                     </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                    {incomeSources.map((source) => (
+                    {incomeSources.filter(source => source.id).map((source) => (
                         <SelectItem key={source.id} value={source.id}>
                         {source.name}
                         </SelectItem>

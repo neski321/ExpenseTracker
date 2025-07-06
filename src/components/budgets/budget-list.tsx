@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Budget, Category } from "@/lib/types";
@@ -10,6 +9,18 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getCategoryNameWithHierarchy } from "@/lib/category-utils"; // Import new helper
+import React, { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface BudgetListProps {
   budgets: Budget[];
@@ -24,6 +35,8 @@ export function BudgetList({ budgets, categories, baseCurrencySymbol, onEdit, on
   if (budgets.length === 0) {
     return <p className="text-muted-foreground text-center py-8">No budgets set yet. Create one to start tracking!</p>;
   }
+
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   return (
     <div className="space-y-4">
@@ -61,15 +74,36 @@ export function BudgetList({ budgets, categories, baseCurrencySymbol, onEdit, on
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(budget.id); }} 
-                    aria-label={`Delete budget for ${categoryDisplayName}`} 
-                    className="text-destructive hover:text-destructive/80"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <AlertDialog open={confirmId === budget.id} onOpenChange={open => setConfirmId(open ? budget.id : null)}>
+                    <AlertDialogTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmId(budget.id); }} 
+                        aria-label={`Delete budget for ${categoryDisplayName}`} 
+                        className="text-destructive hover:text-destructive/80"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Budget</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete this budget goal? This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => onDelete(budget.id)}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </CardHeader>

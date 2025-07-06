@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -24,6 +23,8 @@ export async function addPaymentMethodDoc(
 ): Promise<PaymentMethod> {
   try {
     const docRef = await addDoc(getPaymentMethodsCollectionRef(userId), paymentMethodData);
+    // Immediately update the document to include the id field
+    await updateDoc(docRef, { id: docRef.id });
     return { id: docRef.id, ...paymentMethodData };
   } catch (error) {
     console.error("Error adding payment method document: ", error);
