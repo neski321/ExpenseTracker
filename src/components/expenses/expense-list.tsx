@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -18,6 +17,18 @@ import { getCurrencySymbol } from "@/lib/currency-utils";
 import { getCategoryNameWithHierarchy } from "@/lib/category-utils";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import React, { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface ExpenseListProps {
   expenses: Expense[];
@@ -38,6 +49,8 @@ export function ExpenseList({ expenses, categories, paymentMethods, currencies, 
     if (!paymentMethodId) return "N/A";
     return paymentMethods.find(pm => pm.id === paymentMethodId)?.name || "Unknown Method";
   };
+
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   if (expenses.length === 0) {
     return <p className="text-muted-foreground text-center py-8">No expenses recorded yet. Start by adding one!</p>;
@@ -101,9 +114,30 @@ export function ExpenseList({ expenses, categories, paymentMethods, currencies, 
                 <Button variant="ghost" size="icon" onClick={() => onEdit(expense)} aria-label="Edit expense">
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => onDelete(expense.id)} aria-label="Delete expense" className="text-destructive hover:text-destructive/80">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <AlertDialog open={confirmId === expense.id} onOpenChange={open => setConfirmId(open ? expense.id : null)}>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => setConfirmId(expense.id)} aria-label="Delete expense" className="text-destructive hover:text-destructive/80">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete this expense? This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => onDelete(expense.id)}
+                      >
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </TableCell>
             </TableRow>
           ))}

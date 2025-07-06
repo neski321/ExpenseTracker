@@ -1,4 +1,3 @@
-
 "use client";
 
 import { z } from "zod";
@@ -16,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import type { PaymentMethod } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
 
 const paymentMethodFormSchema = z.object({
   name: z.string().min(2, "Payment method name must be at least 2 characters.").max(50, "Name cannot exceed 50 characters."),
@@ -38,6 +38,19 @@ export function PaymentMethodForm({ onSubmit, existingPaymentMethod }: PaymentMe
       name: "",
     },
   });
+
+  // Reset form when existingPaymentMethod changes (for editing)
+  useEffect(() => {
+    if (existingPaymentMethod) {
+      form.reset({
+        name: existingPaymentMethod.name,
+      });
+    } else {
+      form.reset({
+        name: "",
+      });
+    }
+  }, [existingPaymentMethod, form]);
 
   function handleSubmit(data: PaymentMethodFormValues) {
     onSubmit(data);

@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -23,7 +22,17 @@ export async function addCategoryDoc(
   categoryData: Omit<Category, 'id'>
 ): Promise<Category> {
   try {
-    const docRef = await addDoc(getCategoriesCollectionRef(userId), categoryData);
+    // Remove parentId and iconName if present and undefined
+    const cleanData = { ...categoryData };
+    if ('parentId' in cleanData && cleanData.parentId === undefined) {
+      delete (cleanData as any).parentId;
+    }
+    if ('iconName' in cleanData && cleanData.iconName === undefined) {
+      delete (cleanData as any).iconName;
+    }
+    const docRef = await addDoc(getCategoriesCollectionRef(userId), cleanData);
+    // Immediately update the document to include the id field
+    await updateDoc(docRef, { id: docRef.id });
     return { id: docRef.id, ...categoryData };
   } catch (error) {
     console.error("Error adding category document: ", error);
@@ -34,7 +43,14 @@ export async function addCategoryDoc(
 export async function getCategoriesCol(userId: string): Promise<Category[]> {
   try {
     const snapshot = await getDocs(getCategoriesCollectionRef(userId));
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      // Normalize parentId: null to undefined
+      if ('parentId' in data && data.parentId === null) {
+        data.parentId = undefined;
+      }
+      return { id: doc.id, ...data } as Category;
+    });
   } catch (error) {
     console.error("Error getting categories collection: ", error);
     throw error;

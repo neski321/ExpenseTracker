@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { z as zodType } from "zod"; 
@@ -18,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Category, Budget } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { z as zod } from "zod"; 
-import React from "react";
+import React, { useEffect } from "react";
 import { getHierarchicalCategoryOptions } from "@/lib/category-utils";
 
 const budgetFormSchema = zod.object({
@@ -55,6 +54,21 @@ export function BudgetForm({
       goalAmount: 0,
     },
   });
+  
+  // Reset form when existingBudget changes (for editing)
+  useEffect(() => {
+    if (existingBudget) {
+      form.reset({
+        categoryId: existingBudget.categoryId,
+        goalAmount: existingBudget.goalAmount,
+      });
+    } else {
+      form.reset({
+        categoryId: "",
+        goalAmount: 0,
+      });
+    }
+  }, [existingBudget, form]);
   
   // Generate hierarchical options for the dropdown
   // If editing, all categories are potentially available (though the field is disabled).

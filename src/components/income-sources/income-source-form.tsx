@@ -1,4 +1,3 @@
-
 "use client";
 
 import { z } from "zod";
@@ -16,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import type { IncomeSource } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
 
 const incomeSourceFormSchema = z.object({
   name: z.string().min(2, "Source name must be at least 2 characters.").max(50),
@@ -39,6 +39,19 @@ export function IncomeSourceForm({ onSubmit, existingIncomeSource }: IncomeSourc
       name: "",
     },
   });
+
+  // Reset form when existingIncomeSource changes (for editing)
+  useEffect(() => {
+    if (existingIncomeSource) {
+      form.reset({
+        name: existingIncomeSource.name,
+      });
+    } else {
+      form.reset({
+        name: "",
+      });
+    }
+  }, [existingIncomeSource, form]);
 
   function handleSubmit(data: IncomeSourceFormValues) {
     onSubmit(data);

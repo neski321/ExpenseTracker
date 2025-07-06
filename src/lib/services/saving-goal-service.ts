@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -36,6 +35,8 @@ export async function addSavingGoalDoc(
       targetDate: savingGoalData.targetDate instanceof Date ? Timestamp.fromDate(savingGoalData.targetDate) : undefined,
     };
     const docRef = await addDoc(getSavingGoalsCollectionRef(userId), dataToSave);
+    // Immediately update the document to include the id field
+    await updateDoc(docRef, { id: docRef.id });
     return { id: docRef.id, ...savingGoalData }; // Return with app's Date object
   } catch (error) {
     console.error("Error adding saving goal document: ", error);

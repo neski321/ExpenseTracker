@@ -1,4 +1,3 @@
-
 "use client";
 
 import { z as zod } from "zod";
@@ -23,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { SavingGoal } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
 
 const savingGoalFormSchema = zod.object({
   name: zod.string().min(2, "Goal name must be at least 2 characters.").max(50),
@@ -62,6 +62,27 @@ export function SavingGoalForm({ onSubmit, existingGoal, baseCurrencySymbol }: S
       notes: "",
     },
   });
+
+  // Reset form when existingGoal changes (for editing)
+  useEffect(() => {
+    if (existingGoal) {
+      form.reset({
+        name: existingGoal.name,
+        targetAmount: existingGoal.targetAmount,
+        currentAmount: existingGoal.currentAmount,
+        targetDate: existingGoal.targetDate ? new Date(existingGoal.targetDate) : undefined,
+        notes: existingGoal.notes || "",
+      });
+    } else {
+      form.reset({
+        name: "",
+        targetAmount: 0,
+        currentAmount: 0,
+        targetDate: undefined,
+        notes: "",
+      });
+    }
+  }, [existingGoal, form]);
 
   function handleSubmit(data: SavingGoalFormValues) {
     onSubmit(data);

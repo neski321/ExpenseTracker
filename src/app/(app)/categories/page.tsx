@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -237,12 +236,28 @@ export default function CategoriesPage() {
     setIsFormOpen(true);
   };
 
+  const getAllDescendantCategoryIds = (categoryId: string, allCategories: Category[]): string[] => {
+    const directChildren = allCategories.filter(cat => cat.parentId === categoryId);
+    let allDescendants: string[] = [];
+    for (const child of directChildren) {
+      allDescendants.push(child.id);
+      allDescendants = allDescendants.concat(getAllDescendantCategoryIds(child.id, allCategories));
+    }
+    return allDescendants;
+  };
+
   const handleDelete = async (categoryId: string) => {
     if (!user) return;
-    
+    // Find all descendant subcategories recursively
+    const descendantIds = getAllDescendantCategoryIds(categoryId, categories);
     try {
+      // Delete all descendants first
+      for (const subId of descendantIds) {
+        await deleteCategoryDoc(user.uid, subId);
+      }
+      // Then delete the parent
       await deleteCategoryDoc(user.uid, categoryId);
-      toast({ title: "Category Deleted", description: "The category has been removed successfully.", variant: "destructive" });
+      toast({ title: "Category Deleted", description: "The category and all its subcategories have been removed successfully.", variant: "destructive" });
       fetchPageData(); 
     } catch (error: any) {
       toast({

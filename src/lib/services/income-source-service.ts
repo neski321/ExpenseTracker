@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -23,8 +22,14 @@ export async function addIncomeSourceDoc(
   data: Omit<IncomeSource, 'id'>
 ): Promise<IncomeSource> {
   try {
-    const docRef = await addDoc(getIncomeSourcesCollectionRef(userId), data);
-    return { id: docRef.id, ...data };
+    // Remove iconName if present and undefined
+    const cleanData = { ...data };
+    if ('iconName' in cleanData && cleanData.iconName === undefined) {
+      delete (cleanData as any).iconName;
+    }
+    const docRef = await addDoc(getIncomeSourcesCollectionRef(userId), cleanData);
+    await updateDoc(docRef, { id: docRef.id });
+    return { id: docRef.id, ...cleanData };
   } catch (error) {
     console.error("Error adding income source document: ", error);
     throw error;

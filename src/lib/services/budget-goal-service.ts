@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -24,6 +23,8 @@ export async function addBudgetGoalDoc(
 ): Promise<Omit<Budget, 'spentAmount' | 'name'>> { // Returns the goal as stored
   try {
     const docRef = await addDoc(getBudgetGoalsCollectionRef(userId), budgetGoalData);
+    // Immediately update the document to include the id field
+    await updateDoc(docRef, { id: docRef.id } as Record<string, any>);
     return { id: docRef.id, ...budgetGoalData };
   } catch (error) {
     console.error("Error adding budget goal document: ", error);

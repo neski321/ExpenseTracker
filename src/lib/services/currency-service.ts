@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -28,10 +27,11 @@ export async function addCurrencyDoc(
   try {
     // If currencyData includes an ID (e.g., from original seeding defaults), use it as document ID
     const docRef = currencyData.id ? doc(getCurrenciesCollectionRef(userId), currencyData.id) : doc(getCurrenciesCollectionRef(userId));
-    const dataToSave: Omit<Currency, 'id'> = {
+    const dataToSave: Omit<Currency, 'id'> & { id?: string } = {
         code: currencyData.code,
         name: currencyData.name,
-        symbol: currencyData.symbol
+        symbol: currencyData.symbol,
+        id: currencyData.id || docRef.id
     };
     await setDoc(docRef, dataToSave);
     return { id: docRef.id, ...dataToSave };

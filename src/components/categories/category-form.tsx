@@ -1,4 +1,3 @@
-
 "use client";
 
 import { z } from "zod";
@@ -17,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import type { Category } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import React from "react"; // Added React import
+import React, { useEffect } from "react"; // Added React import
 
 const NO_PARENT_VALUE = "__none__";
 
@@ -48,6 +47,21 @@ export function CategoryForm({ onSubmit, existingCategory, allCategories }: Cate
       parentId: NO_PARENT_VALUE,
     },
   });
+
+  // Reset form when existingCategory changes (for editing)
+  useEffect(() => {
+    if (existingCategory) {
+      form.reset({
+        name: existingCategory.name,
+        parentId: existingCategory.parentId || NO_PARENT_VALUE,
+      });
+    } else {
+      form.reset({
+        name: "",
+        parentId: NO_PARENT_VALUE,
+      });
+    }
+  }, [existingCategory, form]);
 
   const sortedPotentialParents = React.useMemo(() => {
     return allCategories
